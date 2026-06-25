@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -16,9 +17,18 @@ console = Console()
 
 @app.command()
 def chunk(
-    path: Path = typer.Argument(..., exists=True, readable=True, help="Text or Markdown file to chunk."),
-    document_id: str | None = typer.Option(None, help="Stable document identifier."),
-    json_output: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+    path: Annotated[
+        Path,
+        typer.Argument(exists=True, readable=True, help="Text or Markdown file to chunk."),
+    ],
+    document_id: Annotated[
+        str | None,
+        typer.Option(help="Stable document identifier."),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print machine-readable JSON."),
+    ] = False,
 ) -> None:
     text = load_text_file(path)
     result = AdaptiveChunker().chunk(text, document_id=document_id or path.stem)
@@ -50,4 +60,3 @@ def chunk(
 
 if __name__ == "__main__":
     app()
-

@@ -15,7 +15,9 @@ def chunks_to_llama_nodes(
     try:
         from llama_index.core.schema import TextNode
     except ImportError as exc:  # pragma: no cover
-        raise RuntimeError("Install LlamaIndex support with `pip install -e .[llama-index]`.") from exc
+        raise RuntimeError(
+            "Install LlamaIndex support with `pip install -e .[llama-index]`."
+        ) from exc
 
     metadata = extra_metadata or {}
     return [
@@ -54,7 +56,9 @@ class LlamaIndexAdaptiveParser:
         for document_index, document in enumerate(documents):
             text = getattr(document, "text", None) or getattr(document, "get_content", lambda: "")()
             metadata = dict(getattr(document, "metadata", {}) or {})
-            document_id = str(metadata.get("document_id") or getattr(document, "id_", document_index))
+            document_id = str(
+                metadata.get("document_id") or getattr(document, "id_", document_index)
+            )
             result = self.chunker.chunk(text, document_id=document_id)
             nodes.extend(
                 chunks_to_llama_nodes(
@@ -68,4 +72,3 @@ class LlamaIndexAdaptiveParser:
                 )
             )
         return nodes
-

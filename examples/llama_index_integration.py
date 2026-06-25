@@ -1,7 +1,6 @@
 from adaptive_chunking import AdaptiveChunker
 from adaptive_chunking.llama_index import result_to_llama_nodes
 
-
 TEXT = """
 # Knowledge Base Article
 

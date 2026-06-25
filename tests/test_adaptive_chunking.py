@@ -34,7 +34,11 @@ def test_adaptive_chunker_returns_best_candidate() -> None:
         "block_integrity",
         "size_compliance",
     }.issubset({metric.name for metric in result.metrics})
-    assert result.candidates == sorted(result.candidates, key=lambda candidate: candidate.score, reverse=True)
+    assert result.candidates == sorted(
+        result.candidates,
+        key=lambda candidate: candidate.score,
+        reverse=True,
+    )
 
 
 def test_split_then_merge_preserves_order() -> None:
@@ -58,9 +62,10 @@ def test_custom_metric_weights_change_reported_weights() -> None:
     evaluator = IntrinsicMetricEvaluator(
         MetricConfig(weights=MetricWeights(block_integrity=2.5, coverage=3.0))
     )
-    chunks = SplitThenMergeChunker(min_size=10, max_size=80).split("One paragraph.\n\nTwo paragraph.")
+    text = "One paragraph.\n\nTwo paragraph."
+    chunks = SplitThenMergeChunker(min_size=10, max_size=80).split(text)
 
-    by_name = {metric.name: metric for metric in evaluator.evaluate("One paragraph.\n\nTwo paragraph.", chunks)}
+    by_name = {metric.name: metric for metric in evaluator.evaluate(text, chunks)}
 
     assert by_name["block_integrity"].weight == 2.5
     assert by_name["coverage"].weight == 3.0
@@ -79,7 +84,10 @@ def test_selector_can_be_limited_to_custom_chunkers() -> None:
         result.candidates[0].strategy_name,
         result.candidates[1].strategy_name,
     ]
-    assert {candidate.strategy_name for candidate in result.candidates} == {"delimiter", "section-aware"}
+    assert {candidate.strategy_name for candidate in result.candidates} == {
+        "delimiter",
+        "section-aware",
+    }
 
 
 def test_delimiter_chunker_splits_custom_boundaries() -> None:

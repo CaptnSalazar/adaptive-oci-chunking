@@ -1,6 +1,5 @@
 from adaptive_chunking.langchain import LangChainAdaptiveTextSplitter
 
-
 TEXT = """
 # Runbook
 

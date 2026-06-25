@@ -51,6 +51,7 @@ adaptive-chunk = "adaptive_chunking.cli:app"
 packages = ["src/adaptive_chunking"]
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]

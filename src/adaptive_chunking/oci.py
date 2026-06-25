@@ -48,11 +48,18 @@ class OCIGenAIEmbeddingClient:
     ) -> None:
         oci = _load_oci()
         self.settings = settings or OCISettings()
-        self.model_id = model_id or os.getenv("OCI_GENAI_EMBEDDING_MODEL", "cohere.embed-english-v3.0")
+        self.model_id = model_id or os.getenv(
+            "OCI_GENAI_EMBEDDING_MODEL",
+            "cohere.embed-english-v3.0",
+        )
         if not self.settings.compartment_id:
             raise ValueError("OCI_COMPARTMENT_ID is required for OCI Generative AI embeddings")
         config = oci.config.from_file(self.settings.config_file, self.settings.profile)
-        kwargs = {"service_endpoint": self.settings.genai_endpoint} if self.settings.genai_endpoint else {}
+        kwargs = (
+            {"service_endpoint": self.settings.genai_endpoint}
+            if self.settings.genai_endpoint
+            else {}
+        )
         self.client = oci.generative_ai_inference.GenerativeAiInferenceClient(config, **kwargs)
         self.models = oci.generative_ai_inference.models
 
@@ -64,4 +71,3 @@ class OCIGenAIEmbeddingClient:
         )
         response = self.client.embed_text(details)
         return [list(vector) for vector in response.data.embeddings]
-

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 SUPPORTED_TEXT_SUFFIXES = {".txt", ".md", ".markdown", ".rst"}
 
 

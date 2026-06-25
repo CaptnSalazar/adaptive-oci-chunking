@@ -26,7 +26,11 @@ def token_count(text: str) -> int:
 
 
 def sentences(text: str) -> list[str]:
-    return [normalize_space(match.group(0)) for match in SENTENCE_RE.finditer(text) if match.group(0).strip()]
+    return [
+        normalize_space(match.group(0))
+        for match in SENTENCE_RE.finditer(text)
+        if match.group(0).strip()
+    ]
 
 
 def cosine_bow(left: str, right: str) -> float:

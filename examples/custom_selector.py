@@ -3,7 +3,6 @@ from adaptive_chunking.chunkers import DelimiterChunker, SectionAwareChunker, Se
 from adaptive_chunking.metrics import IntrinsicMetricEvaluator, MetricConfig, MetricWeights
 from adaptive_chunking.selector import AdaptiveSelector
 
-
 TEXT = """
 # Product Policy
 

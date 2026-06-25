@@ -1,6 +1,5 @@
 from adaptive_chunking import AdaptiveChunker
 
-
 TEXT = """
 # Adaptive Chunking
 

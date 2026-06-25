@@ -16,10 +16,17 @@ class BaseChunker(ABC):
 
     def _build_chunks(self, spans: list[tuple[int, int]], text: str) -> list[Chunk]:
         chunks: list[Chunk] = []
-        for index, (start, end) in enumerate(spans):
+        for start, end in spans:
             chunk_text = normalize_space(text[start:end])
             if chunk_text:
-                chunks.append(Chunk(text=chunk_text, index=len(chunks), start_char=start, end_char=end))
+                chunks.append(
+                    Chunk(
+                        text=chunk_text,
+                        index=len(chunks),
+                        start_char=start,
+                        end_char=end,
+                    )
+                )
         return chunks
 
 
@@ -112,7 +119,13 @@ class RecursiveChunker(BaseChunker):
         spans = self._split_span(text, 0, len(text), 0)
         return self._build_chunks(spans, text)
 
-    def _split_span(self, text: str, start: int, end: int, separator_index: int) -> list[tuple[int, int]]:
+    def _split_span(
+        self,
+        text: str,
+        start: int,
+        end: int,
+        separator_index: int,
+    ) -> list[tuple[int, int]]:
         if end - start <= self.chunk_size:
             return [(start, end)]
         if separator_index >= len(self.separators):
@@ -175,7 +188,9 @@ class SectionAwareChunker(BaseChunker):
         )
 
     def split(self, text: str) -> list[Chunk]:
-        starts = sorted({0, len(text), *(match.start() for match in self.heading_pattern.finditer(text))})
+        starts = sorted(
+            {0, len(text), *(match.start() for match in self.heading_pattern.finditer(text))}
+        )
         spans = [(starts[index], starts[index + 1]) for index in range(len(starts) - 1)]
         merged: list[tuple[int, int]] = []
         current_start: int | None = None
@@ -202,7 +217,12 @@ class SectionAwareChunker(BaseChunker):
             else:
                 for chunk in self.fallback.split(text[start:end]):
                     chunks.append(
-                        Chunk(chunk.text, len(chunks), start + chunk.start_char, start + chunk.end_char)
+                        Chunk(
+                            chunk.text,
+                            len(chunks),
+                            start + chunk.start_char,
+                            start + chunk.end_char,
+                        )
                     )
         return chunks
 
@@ -276,7 +296,10 @@ class RegexSectionChunker(BaseChunker):
                             end_char=start + chunk.end_char,
                         )
                     )
-        return [Chunk(c.text, i, c.start_char, c.end_char, c.metadata) for i, c in enumerate(chunks)]
+        return [
+            Chunk(c.text, i, c.start_char, c.end_char, c.metadata)
+            for i, c in enumerate(chunks)
+        ]
 
 
 def default_chunkers() -> list[BaseChunker]:

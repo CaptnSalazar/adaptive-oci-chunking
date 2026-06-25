@@ -62,7 +62,9 @@ class IntrinsicMetricEvaluator:
                 name="document_contextual_coherence",
                 value=self.document_contextual_coherence(chunks),
                 weight=weights.document_contextual_coherence,
-                explanation="Adjacent chunks should preserve document flow without over-fragmenting.",
+                explanation=(
+                    "Adjacent chunks should preserve document flow without over-fragmenting."
+                ),
             ),
             MetricScore(
                 name="block_integrity",
@@ -80,13 +82,17 @@ class IntrinsicMetricEvaluator:
                 name="coverage",
                 value=self.coverage(text, chunks),
                 weight=weights.coverage,
-                explanation="Chunk spans should cover the source document without dropping content.",
+                explanation=(
+                    "Chunk spans should cover the source document without dropping content."
+                ),
             ),
             MetricScore(
                 name="overlap_control",
                 value=self.overlap_control(chunks),
                 weight=weights.overlap_control,
-                explanation="Overlap should be intentional, bounded, and not duplicate too much text.",
+                explanation=(
+                    "Overlap should be intentional, bounded, and not duplicate too much text."
+                ),
             ),
             MetricScore(
                 name="boundary_quality",
@@ -104,7 +110,9 @@ class IntrinsicMetricEvaluator:
                 name="information_density",
                 value=self.information_density(chunks),
                 weight=weights.information_density,
-                explanation="Chunks should contain meaningful lexical variety rather than boilerplate.",
+                explanation=(
+                    "Chunks should contain meaningful lexical variety rather than boilerplate."
+                ),
             ),
             MetricScore(
                 name="redundancy",
@@ -122,7 +130,10 @@ class IntrinsicMetricEvaluator:
         for start, end in references:
             window_start = max(0, start - self.config.reference_window_chars)
             window_end = min(len(text), end + self.config.reference_window_chars)
-            if any(chunk.start_char <= window_start and chunk.end_char >= window_end for chunk in chunks):
+            if any(
+                chunk.start_char <= window_start and chunk.end_char >= window_end
+                for chunk in chunks
+            ):
                 complete += 1
         return _clamp(complete / len(references))
 
@@ -140,7 +151,10 @@ class IntrinsicMetricEvaluator:
     def document_contextual_coherence(self, chunks: list[Chunk]) -> float:
         if len(chunks) <= 1:
             return 1.0
-        scores = [cosine_bow(left.text, right.text) for left, right in zip(chunks, chunks[1:])]
+        scores = [
+            cosine_bow(left.text, right.text)
+            for left, right in zip(chunks, chunks[1:], strict=False)
+        ]
         return _clamp(mean(scores)) if scores else 1.0
 
     def block_integrity(self, text: str, chunks: list[Chunk]) -> float:
@@ -149,8 +163,16 @@ class IntrinsicMetricEvaluator:
             return 0.0
         aligned = 0
         for chunk in chunks:
-            start_ok = _near_boundary(chunk.start_char, boundaries, self.config.boundary_tolerance_chars)
-            end_ok = _near_boundary(chunk.end_char, boundaries, self.config.boundary_tolerance_chars)
+            start_ok = _near_boundary(
+                chunk.start_char,
+                boundaries,
+                self.config.boundary_tolerance_chars,
+            )
+            end_ok = _near_boundary(
+                chunk.end_char,
+                boundaries,
+                self.config.boundary_tolerance_chars,
+            )
             aligned += int(start_ok and end_ok)
         return _clamp(aligned / len(chunks))
 
@@ -186,7 +208,7 @@ class IntrinsicMetricEvaluator:
             return 1.0
         overlap_chars = 0
         total_chars = sum(max(0, chunk.end_char - chunk.start_char) for chunk in chunks)
-        for left, right in zip(chunks, chunks[1:]):
+        for left, right in zip(chunks, chunks[1:], strict=False):
             overlap_chars += max(0, left.end_char - right.start_char)
         if total_chars == 0:
             return 0.0
@@ -208,7 +230,10 @@ class IntrinsicMetricEvaluator:
     def semantic_drift(self, chunks: list[Chunk]) -> float:
         if len(chunks) <= 1:
             return 1.0
-        similarities = [cosine_bow(left.text, right.text) for left, right in zip(chunks, chunks[1:])]
+        similarities = [
+            cosine_bow(left.text, right.text)
+            for left, right in zip(chunks, chunks[1:], strict=False)
+        ]
         if not similarities:
             return 1.0
         avg_similarity = mean(similarities)
