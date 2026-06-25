@@ -63,6 +63,8 @@ This repo is intended to be public and community-maintained. Contributions are w
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, PR expectations, and guidance for adding chunkers or metrics.
 
+Maintained by [Yash Shukla](https://www.linkedin.com/in/yashtechi/), focused on AI, cloud, and RAG systems.
+
 ## Install
 
 ```bash

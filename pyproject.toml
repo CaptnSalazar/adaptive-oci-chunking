@@ -47,6 +47,10 @@ dev = [
 [project.scripts]
 adaptive-chunk = "adaptive_chunking.cli:app"
 
+[project.urls]
+Repository = "https://github.com/CaptnSalazar/adaptive-oci-chunking"
+LinkedIn = "https://www.linkedin.com/in/yashtechi/"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/adaptive_chunking"]
 

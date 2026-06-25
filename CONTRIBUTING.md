@@ -2,6 +2,8 @@
 
 Thanks for helping improve Adaptive OCI Chunking. This project is intended to be useful for practitioners building RAG systems, researchers testing chunking strategies, and maintainers who want a clean place to compare document-splitting ideas.
 
+Maintainer: [Yash Shukla](https://www.linkedin.com/in/yashtechi/), focused on AI, cloud, and RAG systems.
+
 ## Ways to Contribute
 
 - Add new chunkers for specific document structures or domains.
@@ -101,4 +103,3 @@ Please include:
 - Any traceback or metric output.
 
 For private or sensitive documents, replace content with a synthetic example that preserves the relevant structure.
-
