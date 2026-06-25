@@ -162,6 +162,50 @@ evaluator = IntrinsicMetricEvaluator(MetricConfig(weights=weights))
 selector = AdaptiveSelector(evaluator=evaluator)
 ```
 
+## Adaptive Scoring
+
+For each document, the selector runs every candidate chunker and evaluates the chunks it produces. Each candidate receives a normalized weighted score:
+
+```text
+score(candidate) = sum(metric_value_i * metric_weight_i) / sum(metric_weight_i)
+```
+
+Where:
+
+- `metric_value_i` is the metric score for a candidate, normalized from `0.0` to `1.0`.
+- `metric_weight_i` controls how important that metric is for selection.
+- Higher scores are better.
+- Candidates are ranked from highest score to lowest score.
+
+For example, a domain that cares about preserving source text and section boundaries might emphasize `coverage` and `block_integrity`:
+
+| Metric | Value | Weight | Weighted value |
+|--------|------:|-------:|---------------:|
+| coverage | 1.00 | 1.50 | 1.50 |
+| block_integrity | 0.90 | 1.40 | 1.26 |
+| redundancy | 0.80 | 0.80 | 0.64 |
+
+```text
+score = (1.50 + 1.26 + 0.64) / (1.50 + 1.40 + 0.80)
+      = 3.40 / 3.70
+      = 0.919
+```
+
+You can inspect every candidate, not just the winner:
+
+```python
+from adaptive_chunking import AdaptiveChunker
+
+result = AdaptiveChunker().chunk(text, document_id="demo")
+
+for candidate in result.candidates:
+    print(candidate.strategy_name, round(candidate.score, 3), len(candidate.chunks))
+    for metric in candidate.metrics:
+        print(" ", metric.name, metric.value, "weight=", metric.weight)
+```
+
+This makes the selection process explainable: if a chunker loses, you can see whether it dropped content, produced excessive overlap, cut through structure, or failed a size constraint.
+
 ## LangChain
 
 ```python
