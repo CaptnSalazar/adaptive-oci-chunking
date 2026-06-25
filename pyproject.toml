@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "adaptive-oci-chunking"
+version = "0.1.0"
+description = "Adaptive document chunking for RAG with optional Oracle Cloud Infrastructure integrations."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Your Name" }]
+keywords = ["rag", "chunking", "adaptive-chunking", "oci", "document-ai", "genai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Text Processing",
+]
+dependencies = [
+  "pydantic>=2.7",
+  "typer>=0.12",
+  "rich>=13.7",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.111", "uvicorn[standard]>=0.30"]
+langchain = ["langchain-text-splitters>=0.2"]
+llama-index = ["llama-index-core>=0.10"]
+oci = ["oci>=2.130"]
+integrations = ["langchain-text-splitters>=0.2", "llama-index-core>=0.10"]
+dev = [
+  "fastapi>=0.111",
+  "uvicorn[standard]>=0.30",
+  "langchain-text-splitters>=0.2",
+  "llama-index-core>=0.10",
+  "oci>=2.130",
+  "pytest>=8.0",
+  "ruff>=0.5",
+  "mypy>=1.10",
+]
+
+[project.scripts]
+adaptive-chunk = "adaptive_chunking.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/adaptive_chunking"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
