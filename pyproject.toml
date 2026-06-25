@@ -9,7 +9,7 @@ description = "Adaptive document chunking for RAG with optional Oracle Cloud Inf
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-authors = [{ name = "Your Name" }]
+authors = [{ name = "Yash Shukla" }]
 keywords = ["rag", "chunking", "adaptive-chunking", "oci", "document-ai", "genai"]
 classifiers = [
   "Development Status :: 3 - Alpha",
