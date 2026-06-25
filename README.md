@@ -1,4 +1,15 @@
+<div align="center">
+
 # Adaptive OCI Chunking
+
+**Adaptive chunking toolkit for RAG with OCI, LangChain, and LlamaIndex support**
+
+[![CI](https://github.com/CaptnSalazar/adaptive-oci-chunking/actions/workflows/ci.yml/badge.svg)](https://github.com/CaptnSalazar/adaptive-oci-chunking/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![arXiv](https://img.shields.io/badge/arXiv-2603.25333-b31b1b.svg)](https://arxiv.org/abs/2603.25333)
+
+</div>
 
 Adaptive OCI Chunking is an extensible Python implementation for document-aware chunk selection in Retrieval-Augmented Generation (RAG). It is inspired by Ekimetrics' `adaptive-chunking` repository and the paper _Adaptive Chunking: Optimizing Chunking-Method Selection for RAG_.
 
@@ -7,6 +18,12 @@ The package evaluates several chunking strategies for each document, scores them
 ## Architecture
 
 ![Adaptive OCI Chunking architecture](Archtecture.png)
+
+## What is Adaptive Chunking?
+
+No single chunking method works best for every document in a RAG pipeline. Adaptive chunking treats chunking as a selection problem: try multiple splitting strategies, score each result with intrinsic quality metrics, and choose the best candidate for the document at hand.
+
+This repo builds on that idea as a practical toolkit. It keeps the core dependency-light, adds extra production-oriented metrics, and includes optional adapters for OCI, LangChain, and LlamaIndex.
 
 ## Features
 
@@ -215,3 +232,21 @@ This repo is designed as a clean, extensible foundation rather than a verbatim c
 
 - Ekimetrics reference implementation: [ekimetrics/adaptive-chunking](https://github.com/ekimetrics/adaptive-chunking)
 - Paper: [Adaptive Chunking: Optimizing Chunking-Method Selection for RAG](https://arxiv.org/abs/2603.25333)
+
+## Citation
+
+If this project helps your work, please cite the original adaptive chunking paper:
+
+```bibtex
+@inproceedings{demoura2026adaptive,
+    title={Adaptive Chunking: Optimizing Chunking-Method Selection for RAG},
+    author={de Moura Junior, Paulo Roberto and Lelong, Jean and Blangero, Annabelle},
+    booktitle={Proceedings of the 15th Language Resources and Evaluation Conference (LREC 2026)},
+    year={2026},
+    url={https://arxiv.org/abs/2603.25333},
+}
+```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
