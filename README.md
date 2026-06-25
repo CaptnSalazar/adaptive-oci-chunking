@@ -210,3 +210,8 @@ examples/
 ## Notes
 
 This repo is designed as a clean, extensible foundation rather than a verbatim copy of the reference implementation. The metric implementations are practical approximations intended for engineering use and experimentation. Production RAG deployments should calibrate weights, chunk sizes, and embedding models against their document domains.
+
+## References
+
+- Ekimetrics reference implementation: [ekimetrics/adaptive-chunking](https://github.com/ekimetrics/adaptive-chunking)
+- Paper: [Adaptive Chunking: Optimizing Chunking-Method Selection for RAG](https://arxiv.org/abs/2603.25333)
