@@ -17,7 +17,7 @@ The package evaluates several chunking strategies for each document, scores them
 
 ## Architecture
 
-![Adaptive OCI Chunking architecture](Archtecture.png)
+![Adaptive OCI Chunking architecture](Architecture.png)
 
 ## What is Adaptive Chunking?
 
@@ -55,11 +55,11 @@ This repo builds on that idea as a practical toolkit. It keeps the core dependen
 - LlamaIndex node conversion and parser-style adapter.
 - CLI for local text/Markdown files.
 - Optional OCI Object Storage loader and OCI Generative AI embedding adapter.
-- Small, dependency-light core suitable for a public GitHub repo.
+- Small, dependency-light core for local document chunking workflows.
 
 ## Contributing
 
-This repo is intended to be public and community-maintained. Contributions are welcome for new chunkers, metrics, examples, integrations, benchmarks, documentation, and bug fixes.
+Contributions are welcome for new chunkers, metrics, examples, integrations, benchmarks, documentation, and bug fixes.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, PR expectations, and guidance for adding chunkers or metrics.
 

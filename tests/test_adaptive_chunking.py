@@ -45,7 +45,14 @@ def test_split_then_merge_preserves_order() -> None:
     text = "A first paragraph.\n\nA second paragraph.\n\nA third paragraph."
     chunks = SplitThenMergeChunker(min_size=10, max_size=40).split(text)
 
-    assert "".join(chunk.text for chunk in chunks).replace(" ", "")
+    assert [chunk.text for chunk in chunks] == [
+        "A first paragraph.",
+        "A second paragraph.\n\nA third paragraph.",
+    ]
+    assert [text[chunk.start_char : chunk.end_char].strip() for chunk in chunks] == [
+        "A first paragraph.",
+        "A second paragraph.\n\nA third paragraph.",
+    ]
     assert [chunk.index for chunk in chunks] == list(range(len(chunks)))
     assert chunks[0].start_char == 0
 
