@@ -67,23 +67,39 @@ Maintained by [Yash Shukla](https://www.linkedin.com/in/yashtechi/), focused on 
 
 ## Install
 
+Install the latest release from PyPI:
+
+```bash
+pip install adaptive-oci-chunking
+```
+
+The package installs the core local chunking toolkit. Optional extras are available for OCI, the API server, and framework integrations:
+
+```bash
+pip install "adaptive-oci-chunking[oci]"
+pip install "adaptive-oci-chunking[api]"
+pip install "adaptive-oci-chunking[langchain,llama-index]"
+```
+
+For local development from a cloned checkout:
+
 ```bash
 pip install -e ".[dev]"
 ```
 
-With OCI support:
+With OCI support from source:
 
 ```bash
 pip install -e ".[oci]"
 ```
 
-With the API server:
+With the API server from source:
 
 ```bash
 pip install -e ".[api]"
 ```
 
-With framework integrations:
+With framework integrations from source:
 
 ```bash
 pip install -e ".[langchain,llama-index]"
