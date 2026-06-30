@@ -107,8 +107,23 @@ pip install -e ".[langchain,llama-index]"
 
 ## Quick Start
 
+Check the installed package version:
+
+```bash
+python -c "import adaptive_chunking; print(adaptive_chunking.__version__)"
+```
+
+From a cloned checkout, run the bundled sample through the CLI:
+
 ```bash
 adaptive-chunk chunk examples/sample.md --json
+```
+
+After installing from PyPI in any project, create a small Markdown file and chunk it:
+
+```bash
+printf "# Demo\nAdaptive chunking chooses a splitter per document.\n\n## Details\nChunks keep related context together.\n" > sample.md
+adaptive-chunk chunk sample.md --json
 ```
 
 Python usage:

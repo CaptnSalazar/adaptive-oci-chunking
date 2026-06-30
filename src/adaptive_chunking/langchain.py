@@ -23,7 +23,8 @@ class LangChainAdaptiveTextSplitter(_BaseTextSplitter):  # type: ignore[misc,val
     ) -> None:
         if TextSplitter is None:  # pragma: no cover
             raise RuntimeError(
-                "Install LangChain support with `pip install -e .[langchain]`."
+                "Install LangChain support with "
+                "`pip install 'adaptive-oci-chunking[langchain]'`."
             )
         super().__init__(keep_separator=keep_separator, **kwargs)
         self.chunker = chunker or AdaptiveChunker()

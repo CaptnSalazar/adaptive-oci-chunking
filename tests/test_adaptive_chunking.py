@@ -168,7 +168,7 @@ def test_langchain_adapter_has_helpful_missing_dependency_error() -> None:
     try:
         langchain.LangChainAdaptiveTextSplitter()
     except RuntimeError as exc:
-        assert ".[langchain]" in str(exc)
+        assert "adaptive-oci-chunking[langchain]" in str(exc)
     else:
         raise AssertionError("missing LangChain dependency should raise RuntimeError")
 
@@ -180,7 +180,7 @@ def test_llama_index_adapter_has_helpful_missing_dependency_error() -> None:
     try:
         chunks_to_llama_nodes([Chunk("text", 0, 0, 4)])
     except RuntimeError as exc:
-        assert ".[llama-index]" in str(exc)
+        assert "adaptive-oci-chunking[llama-index]" in str(exc)
     else:
         # Dependency is installed in this environment, which is also fine.
         assert True

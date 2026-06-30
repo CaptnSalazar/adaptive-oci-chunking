@@ -7,7 +7,9 @@ from adaptive_chunking.pipeline import AdaptiveChunker
 try:
     from fastapi import FastAPI
 except ImportError as exc:  # pragma: no cover
-    raise RuntimeError("Install API support with `pip install -e .[api]`.") from exc
+    raise RuntimeError(
+        "Install API support with `pip install 'adaptive-oci-chunking[api]'`."
+    ) from exc
 
 
 class ChunkRequest(BaseModel):
@@ -37,4 +39,3 @@ def chunk(request: ChunkRequest) -> dict:
         "chunks": [chunk.__dict__ for chunk in result.chunks],
         "metrics": [metric.__dict__ for metric in result.metrics],
     }
-

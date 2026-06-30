@@ -16,7 +16,8 @@ def chunks_to_llama_nodes(
         from llama_index.core.schema import TextNode
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError(
-            "Install LlamaIndex support with `pip install -e .[llama-index]`."
+            "Install LlamaIndex support with "
+            "`pip install 'adaptive-oci-chunking[llama-index]'`."
         ) from exc
 
     metadata = extra_metadata or {}

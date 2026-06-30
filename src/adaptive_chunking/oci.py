@@ -9,7 +9,9 @@ def _load_oci() -> Any:
     try:
         import oci  # type: ignore[import-not-found]
     except ImportError as exc:
-        raise RuntimeError("Install OCI support with `pip install -e .[oci]`.") from exc
+        raise RuntimeError(
+            "Install OCI support with `pip install 'adaptive-oci-chunking[oci]'`."
+        ) from exc
     return oci
 
 

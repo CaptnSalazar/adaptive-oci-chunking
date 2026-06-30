@@ -15,6 +15,11 @@ app = typer.Typer(help="Adaptive document chunking for RAG.")
 console = Console()
 
 
+@app.callback()
+def main() -> None:
+    """Adaptive document chunking for RAG."""
+
+
 @app.command()
 def chunk(
     path: Annotated[
