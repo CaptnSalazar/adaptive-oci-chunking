@@ -7,9 +7,11 @@ from adaptive_chunking.chunkers import (
     SectionAwareChunker,
     SemanticChunker,
     SplitThenMergeChunker,
+    default_chunkers,
 )
 from adaptive_chunking.metrics import IntrinsicMetricEvaluator, MetricConfig, MetricWeights
 from adaptive_chunking.selector import AdaptiveSelector
+from adaptive_chunking.text import normalize_space
 
 
 def test_adaptive_chunker_returns_best_candidate() -> None:
@@ -102,6 +104,7 @@ def test_delimiter_chunker_splits_custom_boundaries() -> None:
     chunks = DelimiterChunker(delimiter="\n---\n").split(text)
 
     assert [chunk.text for chunk in chunks] == ["First part.", "Second part.", "Third part."]
+    assert [chunk.index for chunk in chunks] == [0, 1, 2]
 
 
 def test_delimiter_chunker_can_keep_delimiters() -> None:
@@ -115,6 +118,7 @@ def test_page_chunker_uses_form_feed_pages() -> None:
     chunks = PageChunker().split("Page one.\fPage two.")
 
     assert [chunk.text for chunk in chunks] == ["Page one.", "Page two."]
+    assert [chunk.index for chunk in chunks] == [0, 1]
 
 
 def test_section_aware_chunker_prefers_heading_boundaries() -> None:
@@ -132,6 +136,18 @@ def test_semantic_chunker_returns_ordered_chunks() -> None:
     assert chunks
     assert [chunk.index for chunk in chunks] == list(range(len(chunks)))
     assert chunks[0].start_char == 0
+
+
+def test_semantic_chunker_preserves_non_sentence_fragments() -> None:
+    text = "# Alpha\nCats sleep.\n\n# Beta\n- Dogs bark\nTrailing fragment"
+    chunks = SemanticChunker(max_size=24, min_size=3, similarity_threshold=0.2).split(text)
+
+    assert chunks
+    assert [chunk.index for chunk in chunks] == list(range(len(chunks)))
+    assert "# Alpha" in [chunk.text for chunk in chunks]
+    assert "# Beta" in [chunk.text for chunk in chunks]
+    assert "- Dogs bark" in [chunk.text for chunk in chunks]
+    assert "Trailing fragment" in [chunk.text for chunk in chunks]
 
 
 def test_recursive_chunker_does_not_drop_long_unseparated_text() -> None:
@@ -157,6 +173,27 @@ def test_coverage_penalizes_dropped_content() -> None:
     coverage = IntrinsicMetricEvaluator().coverage(text, chunks[:1])
 
     assert 0.0 < coverage < 1.0
+
+
+def test_default_chunkers_return_valid_indexes_and_offsets() -> None:
+    samples = [
+        "# Alpha\nBody text.\n\n# Beta\nMore body.",
+        "one\n---\ntwo\n---\nthree",
+        "Page one.\fPage two.",
+        "alpha beta gamma delta epsilon",
+        "   ",
+        "x" * 40,
+    ]
+
+    for text in samples:
+        for chunker in default_chunkers():
+            chunks = chunker.split(text)
+
+            assert [chunk.index for chunk in chunks] == list(range(len(chunks)))
+            assert all(chunk.text for chunk in chunks)
+            for chunk in chunks:
+                assert 0 <= chunk.start_char <= chunk.end_char <= len(text)
+                assert normalize_space(text[chunk.start_char : chunk.end_char]) == chunk.text
 
 
 def test_langchain_adapter_has_helpful_missing_dependency_error() -> None:

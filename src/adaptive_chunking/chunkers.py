@@ -4,7 +4,7 @@ import re
 from abc import ABC, abstractmethod
 
 from adaptive_chunking.models import Chunk
-from adaptive_chunking.text import cosine_bow, normalize_space, sentences
+from adaptive_chunking.text import cosine_bow, normalize_space
 
 
 class BaseChunker(ABC):
@@ -14,15 +14,21 @@ class BaseChunker(ABC):
     def split(self, text: str) -> list[Chunk]:
         raise NotImplementedError
 
-    def _build_chunks(self, spans: list[tuple[int, int]], text: str) -> list[Chunk]:
+    def _build_chunks(
+        self,
+        spans: list[tuple[int, int]],
+        text: str,
+        start_index: int = 0,
+    ) -> list[Chunk]:
         chunks: list[Chunk] = []
         for start, end in spans:
+            start, end = _trim_span(text, start, end)
             chunk_text = normalize_space(text[start:end])
             if chunk_text:
                 chunks.append(
                     Chunk(
                         text=chunk_text,
-                        index=len(chunks),
+                        index=start_index + len(chunks),
                         start_char=start,
                         end_char=end,
                     )
@@ -92,7 +98,7 @@ class DelimiterChunker(BaseChunker):
         chunks: list[Chunk] = []
         for start, end in spans:
             if end - start <= self.max_size:
-                chunks.extend(self._build_chunks([(start, end)], text))
+                chunks.extend(self._build_chunks([(start, end)], text, start_index=len(chunks)))
                 continue
             for chunk in self.fallback.split(text[start:end]):
                 chunks.append(
@@ -213,7 +219,7 @@ class SectionAwareChunker(BaseChunker):
         chunks: list[Chunk] = []
         for start, end in merged:
             if end - start <= self.max_size:
-                chunks.extend(self._build_chunks([(start, end)], text))
+                chunks.extend(self._build_chunks([(start, end)], text, start_index=len(chunks)))
             else:
                 for chunk in self.fallback.split(text[start:end]):
                     chunks.append(
@@ -241,13 +247,13 @@ class SemanticChunker(BaseChunker):
         self.similarity_threshold = similarity_threshold
 
     def split(self, text: str) -> list[Chunk]:
-        sentence_spans = _sentence_spans(text)
-        if not sentence_spans:
+        semantic_spans = _semantic_unit_spans(text)
+        if not semantic_spans:
             return []
         chunks: list[tuple[int, int]] = []
-        start, end = sentence_spans[0]
+        start, end = semantic_spans[0]
         previous_text = text[start:end]
-        for next_start, next_end in sentence_spans[1:]:
+        for next_start, next_end in semantic_spans[1:]:
             next_text = text[next_start:next_end]
             proposed_size = next_end - start
             similarity = cosine_bow(previous_text, next_text)
@@ -285,7 +291,7 @@ class RegexSectionChunker(BaseChunker):
         for start, end in spans:
             section = text[start:end]
             if len(section) <= self.max_size:
-                chunks.extend(self._build_chunks([(start, end)], text))
+                chunks.extend(self._build_chunks([(start, end)], text, start_index=len(chunks)))
             else:
                 for chunk in self.fallback.split(section):
                     chunks.append(
@@ -329,14 +335,18 @@ def _paragraph_spans(text: str) -> list[tuple[int, int]]:
     return spans or ([(0, len(text))] if text.strip() else [])
 
 
-def _sentence_spans(text: str) -> list[tuple[int, int]]:
+def _semantic_unit_spans(text: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
-    cursor = 0
-    for sentence in sentences(text):
-        start = text.find(sentence, cursor)
-        if start < 0:
-            continue
-        end = start + len(sentence)
-        spans.append((start, end))
-        cursor = end
+    for match in re.finditer(r"[^\n.!?]+(?:[.!?]+|(?=\n)|$)", text):
+        start, end = _trim_span(text, match.start(), match.end())
+        if start < end:
+            spans.append((start, end))
     return spans
+
+
+def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return start, end
