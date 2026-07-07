@@ -44,3 +44,53 @@ def test_cli_chunk_subcommand_generates_json(tmp_path: Path) -> None:
     assert '"document_id": "sample"' in result.stdout
     assert '"chunks":' in result.stdout
     assert '"strategy_name":' in result.stdout
+
+
+def test_cli_lists_strategies() -> None:
+    result = runner.invoke(app, ["strategies"])
+
+    assert result.exit_code == 0
+    assert "markdown" in result.stdout
+    assert "token-window" in result.stdout
+
+
+def test_cli_can_limit_strategy(tmp_path: Path) -> None:
+    sample = tmp_path / "sample.md"
+    sample.write_text("First paragraph.\n\nSecond paragraph.", encoding="utf-8")
+
+    result = runner.invoke(app, ["chunk", str(sample), "--strategy", "single", "--json"])
+
+    assert result.exit_code == 0
+    assert '"strategy_name": "single"' in result.stdout
+
+
+def test_api_accepts_strategy_config_when_fastapi_installed() -> None:
+    try:
+        from fastapi.testclient import TestClient
+    except ImportError:
+        return
+
+    from adaptive_chunking.api import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/chunk",
+        json={"text": "# Demo\nBody text.", "strategies": ["single"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["strategy_name"] == "single"
+
+
+def test_api_rejects_empty_strategy_list_when_fastapi_installed() -> None:
+    try:
+        from fastapi.testclient import TestClient
+    except ImportError:
+        return
+
+    from adaptive_chunking.api import app
+
+    client = TestClient(app)
+    response = client.post("/chunk", json={"text": "Body text.", "strategies": []})
+
+    assert response.status_code == 400

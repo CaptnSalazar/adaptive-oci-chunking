@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import re
 from abc import ABC, abstractmethod
+from html.parser import HTMLParser
+from typing import Any
 
 from adaptive_chunking.models import Chunk
 from adaptive_chunking.text import cosine_bow, normalize_space
@@ -74,6 +77,10 @@ class DelimiterChunker(BaseChunker):
         keep_delimiter: bool = False,
         max_size: int = 1800,
     ) -> None:
+        if not delimiter:
+            raise ValueError("delimiter must be non-empty")
+        if max_size <= 0:
+            raise ValueError("max_size must be positive")
         self.delimiter = delimiter
         self.keep_delimiter = keep_delimiter
         self.max_size = max_size
@@ -268,6 +275,8 @@ class RecursiveChunker(BaseChunker):
     name = "recursive"
 
     def __init__(self, chunk_size: int = 1200, separators: tuple[str, ...] | None = None) -> None:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
         self.chunk_size = chunk_size
         self.separators = separators or ("\n\n", "\n", ". ", " ")
 
@@ -336,6 +345,8 @@ class SectionAwareChunker(BaseChunker):
     name = "section-aware"
 
     def __init__(self, min_size: int = 500, max_size: int = 1800) -> None:
+        if min_size <= 0 or max_size <= min_size:
+            raise ValueError("expected 0 < min_size < max_size")
         self.min_size = min_size
         self.max_size = max_size
         self.fallback = SplitThenMergeChunker(min_size=min_size, max_size=max_size)
@@ -407,6 +418,10 @@ class SemanticChunker(BaseChunker):
         min_size: int = 350,
         similarity_threshold: float = 0.10,
     ) -> None:
+        if min_size <= 0 or max_size <= min_size:
+            raise ValueError("expected 0 < min_size < max_size")
+        if not 0.0 <= similarity_threshold <= 1.0:
+            raise ValueError("similarity_threshold must be between 0.0 and 1.0")
         self.max_size = max_size
         self.min_size = min_size
         self.similarity_threshold = similarity_threshold
@@ -440,6 +455,8 @@ class RegexSectionChunker(BaseChunker):
     name = "regex-section"
 
     def __init__(self, max_size: int = 1800, heading_pattern: str | None = None) -> None:
+        if max_size <= 0:
+            raise ValueError("max_size must be positive")
         self.max_size = max_size
         self.heading_pattern = re.compile(
             heading_pattern or r"(?m)^(?:#{1,6}\s+.+|\d+(?:\.\d+)*\s+[A-Z].+)$"
@@ -484,18 +501,233 @@ class RegexSectionChunker(BaseChunker):
         ]
 
 
+class TokenWindowChunker(BaseChunker):
+    name = "token-window"
+
+    def __init__(self, chunk_tokens: int = 240, overlap_tokens: int = 24) -> None:
+        if chunk_tokens <= 0:
+            raise ValueError("chunk_tokens must be positive")
+        if overlap_tokens < 0 or overlap_tokens >= chunk_tokens:
+            raise ValueError("overlap_tokens must be non-negative and smaller than chunk_tokens")
+        self.chunk_tokens = chunk_tokens
+        self.overlap_tokens = overlap_tokens
+
+    def split(self, text: str) -> list[Chunk]:
+        tokens = [(match.start(), match.end()) for match in re.finditer(r"\S+", text)]
+        if not tokens:
+            return []
+        spans: list[tuple[int, int]] = []
+        step = self.chunk_tokens - self.overlap_tokens
+        for token_start in range(0, len(tokens), step):
+            token_end = min(token_start + self.chunk_tokens, len(tokens))
+            spans.append((tokens[token_start][0], tokens[token_end - 1][1]))
+            if token_end == len(tokens):
+                break
+        return self._build_chunks(spans, text)
+
+
+class SentenceChunker(BaseChunker):
+    name = "sentence"
+
+    def __init__(self, min_size: int = 400, max_size: int = 1400) -> None:
+        if min_size <= 0 or max_size <= min_size:
+            raise ValueError("expected 0 < min_size < max_size")
+        self.min_size = min_size
+        self.max_size = max_size
+        self.fallback = RecursiveChunker(chunk_size=max_size)
+
+    def split(self, text: str) -> list[Chunk]:
+        spans = _semantic_unit_spans(text)
+        if not spans:
+            return []
+        merged = _merge_spans(spans, self.min_size, self.max_size)
+        return _split_oversized(self, merged, text, self.max_size)
+
+
+class ParagraphChunker(BaseChunker):
+    name = "paragraph"
+
+    def __init__(self, min_size: int = 500, max_size: int = 1600) -> None:
+        if min_size <= 0 or max_size <= min_size:
+            raise ValueError("expected 0 < min_size < max_size")
+        self.min_size = min_size
+        self.max_size = max_size
+        self.fallback = RecursiveChunker(chunk_size=max_size)
+
+    def split(self, text: str) -> list[Chunk]:
+        spans = _paragraph_spans(text)
+        if not spans:
+            return []
+        merged = _merge_spans(spans, self.min_size, self.max_size)
+        return _split_oversized(self, merged, text, self.max_size)
+
+
+class MarkdownChunker(BaseChunker):
+    name = "markdown"
+
+    def __init__(self, min_size: int = 500, max_size: int = 1800) -> None:
+        if min_size <= 0 or max_size <= min_size:
+            raise ValueError("expected 0 < min_size < max_size")
+        self.min_size = min_size
+        self.max_size = max_size
+        self.fallback = RecursiveChunker(chunk_size=max_size, separators=("\n\n", "\n", " "))
+        self.heading_pattern = re.compile(r"(?m)^#{1,6}\s+.+$")
+
+    def split(self, text: str) -> list[Chunk]:
+        spans = _markdown_block_spans(text)
+        if not spans:
+            return []
+        heading_starts = {match.start() for match in self.heading_pattern.finditer(text)}
+        section_spans: list[tuple[int, int]] = []
+        current_start: int | None = None
+        current_end: int | None = None
+        for start, end in spans:
+            if current_start is None or start in heading_starts:
+                if current_start is not None and current_end is not None:
+                    section_spans.append((current_start, current_end))
+                current_start, current_end = start, end
+            else:
+                current_end = end
+        if current_start is not None and current_end is not None:
+            section_spans.append((current_start, current_end))
+        merged = _merge_spans(section_spans, self.min_size, self.max_size)
+        chunks = _split_oversized(self, merged, text, self.max_size)
+        return [
+            Chunk(
+                chunk.text,
+                index,
+                chunk.start_char,
+                chunk.end_char,
+                {**chunk.metadata, **_section_metadata(text, chunk.start_char, index)},
+            )
+            for index, chunk in enumerate(chunks)
+        ]
+
+
+class HtmlChunker(BaseChunker):
+    name = "html"
+
+    def __init__(self, min_size: int = 500, max_size: int = 1800) -> None:
+        if min_size <= 0 or max_size <= min_size:
+            raise ValueError("expected 0 < min_size < max_size")
+        self.text_chunker = ParagraphChunker(min_size=min_size, max_size=max_size)
+
+    def split(self, text: str) -> list[Chunk]:
+        parser = _HTMLTextExtractor()
+        parser.feed(text)
+        extracted = parser.text()
+        chunks = self.text_chunker.split(extracted)
+        return [
+            Chunk(
+                chunk.text,
+                chunk.index,
+                0,
+                len(text),
+                {**chunk.metadata, "source_format": "html"},
+            )
+            for chunk in chunks
+        ]
+
+
+class JsonChunker(BaseChunker):
+    name = "json"
+
+    def __init__(self, max_size: int = 1800) -> None:
+        if max_size <= 0:
+            raise ValueError("max_size must be positive")
+        self.max_size = max_size
+        self.fallback = RecursiveChunker(chunk_size=max_size)
+
+    def split(self, text: str) -> list[Chunk]:
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return self.fallback.split(text)
+        records = list(_json_records(data))
+        if not records:
+            return []
+        chunks: list[Chunk] = []
+        for path, value in records:
+            serialized = json.dumps(value, ensure_ascii=False, indent=2)
+            if len(serialized) <= self.max_size:
+                chunks.append(
+                    Chunk(serialized, len(chunks), 0, len(text), {"json_path": path})
+                )
+                continue
+            for chunk in self.fallback.split(serialized):
+                chunks.append(
+                    Chunk(
+                        chunk.text,
+                        len(chunks),
+                        0,
+                        len(text),
+                        {"json_path": path, "source_format": "json"},
+                    )
+                )
+        return chunks
+
+
+class CodeChunker(BaseChunker):
+    name = "code"
+
+    def __init__(self, max_size: int = 1800) -> None:
+        if max_size <= 0:
+            raise ValueError("max_size must be positive")
+        self.max_size = max_size
+        self.fallback = RecursiveChunker(chunk_size=max_size, separators=("\n\n", "\n", " "))
+        self.pattern = re.compile(
+            r"(?m)^(?:class|def|async def|function|export function|const\s+\w+\s*=|"
+            r"public\s+class|private\s+|public\s+|protected\s+)"
+        )
+
+    def split(self, text: str) -> list[Chunk]:
+        starts = sorted({0, len(text), *(match.start() for match in self.pattern.finditer(text))})
+        spans = [
+            (starts[index], starts[index + 1])
+            for index in range(len(starts) - 1)
+            if text[starts[index] : starts[index + 1]].strip()
+        ]
+        if not spans:
+            return []
+        return _split_oversized(self, spans, text, self.max_size)
+
+
+class HybridChunker(BaseChunker):
+    name = "hybrid"
+
+    def __init__(self, min_size: int = 500, max_size: int = 1800) -> None:
+        if min_size <= 0 or max_size <= min_size:
+            raise ValueError("expected 0 < min_size < max_size")
+        self.markdown = MarkdownChunker(min_size=min_size, max_size=max_size)
+        self.section = SectionAwareChunker(min_size=min_size, max_size=max_size)
+        self.paragraph = ParagraphChunker(min_size=min_size, max_size=max_size)
+
+    def split(self, text: str) -> list[Chunk]:
+        if re.search(r"(?m)^#{1,6}\s+.+$", text) or "```" in text:
+            return self.markdown.split(text)
+        if re.search(r"(?m)^(?:\d+(?:\.\d+)*\s+[A-Z].+|[A-Z][A-Za-z0-9 ,:;&()/-]{3,80})$", text):
+            return self.section.split(text)
+        return self.paragraph.split(text)
+
+
 def default_chunkers() -> list[BaseChunker]:
     return [
         SingleChunker(),
         FixedWindowChunker(),
+        TokenWindowChunker(),
         RecursiveChunker(),
+        SentenceChunker(),
+        ParagraphChunker(),
         SplitThenMergeChunker(),
         SectionAwareChunker(),
+        MarkdownChunker(),
         DelimiterChunker(),
         PageChunker(),
         PageIndexChunker(),
         SemanticChunker(),
         RegexSectionChunker(),
+        CodeChunker(),
+        HybridChunker(),
     ]
 
 
@@ -529,6 +761,100 @@ def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
     return start, end
 
 
+def _merge_spans(
+    spans: list[tuple[int, int]],
+    min_size: int,
+    max_size: int,
+) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    start, end = spans[0]
+    for next_start, next_end in spans[1:]:
+        proposed_size = next_end - start
+        if proposed_size <= max_size or end - start < min_size:
+            end = next_end
+        else:
+            merged.append((start, end))
+            start, end = next_start, next_end
+    merged.append((start, end))
+    return merged
+
+
+def _split_oversized(
+    chunker: BaseChunker,
+    spans: list[tuple[int, int]],
+    text: str,
+    max_size: int,
+) -> list[Chunk]:
+    fallback = RecursiveChunker(chunk_size=max_size)
+    chunks: list[Chunk] = []
+    for start, end in spans:
+        if end - start <= max_size:
+            chunks.extend(chunker._build_chunks([(start, end)], text, start_index=len(chunks)))
+            continue
+        for chunk in fallback.split(text[start:end]):
+            chunks.append(
+                Chunk(chunk.text, len(chunks), start + chunk.start_char, start + chunk.end_char)
+            )
+    return chunks
+
+
+def _markdown_block_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    lines = text.splitlines(keepends=True)
+    cursor = 0
+    block_start = 0
+    in_fence = False
+    for line in lines:
+        line_start = cursor
+        cursor += len(line)
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+        if not in_fence and not stripped:
+            if text[block_start:line_start].strip():
+                spans.append((block_start, line_start))
+            block_start = cursor
+    if text[block_start:].strip():
+        spans.append((block_start, len(text)))
+    return spans
+
+
+class _HTMLTextExtractor(HTMLParser):
+    block_tags = {"p", "div", "section", "article", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self.block_tags:
+            self.parts.append("\n\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.block_tags:
+            self.parts.append("\n\n")
+
+    def handle_data(self, data: str) -> None:
+        if data.strip():
+            self.parts.append(data.strip())
+
+    def text(self) -> str:
+        return normalize_space(" ".join(self.parts).replace("\n\n", "\n\n"))
+
+
+def _json_records(data: Any, path: str = "$") -> list[tuple[str, Any]]:
+    if isinstance(data, list):
+        return [(f"{path}[{index}]", value) for index, value in enumerate(data)]
+    if isinstance(data, dict):
+        nested = [
+            (f"{path}.{key}", value)
+            for key, value in data.items()
+            if isinstance(value, (dict, list))
+        ]
+        return nested or [(path, data)]
+    return [(path, data)]
+
+
 def _section_metadata(text: str, start: int, section_index: int) -> dict[str, object]:
     heading = text[start:].splitlines()[0].strip() if text[start:].strip() else ""
     title = re.sub(r"^(?:#{1,6}\s+|\d+(?:\.\d+)*\s+)", "", heading).strip() or "document"
@@ -538,3 +864,32 @@ def _section_metadata(text: str, start: int, section_index: int) -> dict[str, ob
         "section_title": title,
         "section_instance_id": f"section-{section_index}-{slug}",
     }
+
+
+def _register_default_chunkers() -> None:
+    from adaptive_chunking.registry import registry
+
+    for chunker_type in (
+        SingleChunker,
+        FixedWindowChunker,
+        TokenWindowChunker,
+        RecursiveChunker,
+        SentenceChunker,
+        ParagraphChunker,
+        SplitThenMergeChunker,
+        SectionAwareChunker,
+        MarkdownChunker,
+        DelimiterChunker,
+        PageChunker,
+        PageIndexChunker,
+        SemanticChunker,
+        RegexSectionChunker,
+        HtmlChunker,
+        JsonChunker,
+        CodeChunker,
+        HybridChunker,
+    ):
+        registry.register(chunker_type.name, chunker_type)
+
+
+_register_default_chunkers()

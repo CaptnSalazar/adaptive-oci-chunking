@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "adaptive-oci-chunking"
-version = "0.1.4"
+version = "0.2.0"
 description = "Adaptive document chunking for RAG with optional Oracle Cloud Infrastructure integrations."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -64,3 +64,15 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+
+[[tool.mypy.overrides]]
+module = [
+  "langchain_text_splitters.*",
+  "llama_index.*",
+  "oci",
+  "oci.*",
+]
+ignore_missing_imports = true

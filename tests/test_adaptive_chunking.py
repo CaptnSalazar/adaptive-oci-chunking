@@ -1,16 +1,25 @@
 from adaptive_chunking import AdaptiveChunker
 from adaptive_chunking.chunkers import (
+    CodeChunker,
     DelimiterChunker,
     FixedWindowChunker,
+    HtmlChunker,
+    JsonChunker,
+    MarkdownChunker,
     PageChunker,
     PageIndexChunker,
+    ParagraphChunker,
     RecursiveChunker,
     SectionAwareChunker,
     SemanticChunker,
+    SentenceChunker,
     SplitThenMergeChunker,
+    TokenWindowChunker,
     default_chunkers,
 )
 from adaptive_chunking.metrics import IntrinsicMetricEvaluator, MetricConfig, MetricWeights
+from adaptive_chunking.models import Chunk, ChunkingConfig, Document
+from adaptive_chunking.registry import registry
 from adaptive_chunking.retrieval import expand_section_instances
 from adaptive_chunking.selector import AdaptiveSelector
 from adaptive_chunking.text import normalize_space
@@ -280,7 +289,82 @@ def test_default_chunkers_return_valid_indexes_and_offsets() -> None:
             assert all(chunk.text for chunk in chunks)
             for chunk in chunks:
                 assert 0 <= chunk.start_char <= chunk.end_char <= len(text)
+                if chunk.metadata.get("source_format") in {"html", "json"}:
+                    continue
+                if "json_path" in chunk.metadata:
+                    continue
                 assert normalize_space(text[chunk.start_char : chunk.end_char]) == chunk.text
+
+
+def test_token_window_chunker_splits_by_words_with_overlap() -> None:
+    chunks = TokenWindowChunker(chunk_tokens=3, overlap_tokens=1).split("one two three four five")
+
+    assert [chunk.text for chunk in chunks] == ["one two three", "three four five"]
+
+
+def test_sentence_and_paragraph_chunkers_preserve_boundaries() -> None:
+    sentence_chunks = SentenceChunker(min_size=5, max_size=24).split(
+        "First sentence. Second sentence. Third sentence."
+    )
+    paragraph_chunks = ParagraphChunker(min_size=5, max_size=40).split(
+        "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+    )
+
+    assert all(chunk.text.endswith(".") for chunk in sentence_chunks)
+    assert "".join(chunk.text.replace("\n\n", "") for chunk in paragraph_chunks)
+    assert all(chunk.text.endswith(".") for chunk in paragraph_chunks)
+
+
+def test_markdown_chunker_preserves_fenced_code_block() -> None:
+    text = "# Demo\nIntro.\n\n```python\nprint('hello')\n```\n\n## Next\nBody."
+    chunks = MarkdownChunker(min_size=5, max_size=80).split(text)
+
+    assert any("```python\nprint('hello')\n```" in chunk.text for chunk in chunks)
+    assert all("section_title" in chunk.metadata for chunk in chunks)
+
+
+def test_html_json_and_code_chunkers_return_structured_metadata() -> None:
+    html_chunks = HtmlChunker(min_size=5, max_size=80).split("<h1>Title</h1><p>Body text.</p>")
+    json_chunks = JsonChunker(max_size=80).split('{"items": [{"id": 1}, {"id": 2}]}')
+    code_chunks = CodeChunker(max_size=80).split("def alpha():\n    pass\n\ndef beta():\n    pass")
+
+    assert html_chunks[0].metadata["source_format"] == "html"
+    assert [chunk.metadata["json_path"] for chunk in json_chunks] == ["$.items"]
+    assert [chunk.text.splitlines()[0] for chunk in code_chunks] == ["def alpha():", "def beta():"]
+
+
+def test_registry_and_config_select_named_strategies() -> None:
+    assert "markdown" in registry.names()
+
+    result = AdaptiveChunker(
+        config=ChunkingConfig(strategies=["paragraph", "sentence"], max_chunks=1)
+    ).chunk("Alpha sentence. Beta sentence.\n\nSecond paragraph.")
+
+    assert {candidate.strategy_name for candidate in result.candidates} == {
+        "paragraph",
+        "sentence",
+    }
+    assert all(len(candidate.chunks) <= 1 for candidate in result.candidates)
+
+
+def test_chunking_config_rejects_empty_strategy_list() -> None:
+    try:
+        ChunkingConfig(strategies=[])
+    except ValueError as exc:
+        assert "strategies" in str(exc)
+    else:
+        raise AssertionError("empty strategies should be rejected")
+
+
+def test_result_serialization_and_document_api() -> None:
+    result = AdaptiveChunker(config=ChunkingConfig(strategies=["single"])).chunk_document(
+        Document(text="hello world", document_id="doc-1")
+    )
+    payload = result.to_dict(include_candidates=True)
+
+    assert payload["document_id"] == "doc-1"
+    assert payload["candidates"][0]["strategy_name"] == "single"
+    assert Chunk.from_dict(payload["chunks"][0]) == result.chunks[0]
 
 
 def test_langchain_adapter_has_helpful_missing_dependency_error() -> None:
