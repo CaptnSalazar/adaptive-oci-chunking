@@ -30,14 +30,22 @@ This repo builds on that idea as a practical toolkit. It keeps the core dependen
 - Candidate chunkers:
   - single-document
   - fixed window with overlap
+  - token window with token overlap
   - recursive split
+  - sentence-aware
+  - paragraph-aware
   - split-then-merge
   - section-aware
+  - Markdown-aware
   - delimiter-aware
   - page-aware
   - page-index hierarchical
   - semantic lexical drift
   - regex-guided section splitting
+  - HTML text extraction
+  - JSON structural splitting
+  - code symbol splitting
+  - hybrid structure-first splitting
 - Metric-guided selection using paper-aligned intrinsic metrics:
   - References Completeness (RC)
   - Intrachunk Cohesion (ICC)
@@ -125,20 +133,26 @@ After installing from PyPI in any project, create a small Markdown file and chun
 ```bash
 printf "# Demo\nAdaptive chunking chooses a splitter per document.\n\n## Details\nChunks keep related context together.\n" > sample.md
 adaptive-chunk chunk sample.md --json
+adaptive-chunk chunk sample.md --strategy markdown --strategy semantic --json
+adaptive-chunk strategies
 ```
 
 Python usage:
 
 ```python
-from adaptive_chunking import AdaptiveChunker
+from adaptive_chunking import AdaptiveChunker, ChunkingConfig
 
 text = "## Introduction\nAdaptive chunking chooses a splitter per document.\n\n## Details\n..."
-chunker = AdaptiveChunker()
+chunker = AdaptiveChunker(
+    config=ChunkingConfig(strategies=["markdown", "token-window", "semantic"])
+)
 result = chunker.chunk(text, document_id="demo")
 
 print(result.strategy_name)
 for chunk in result.chunks:
     print(chunk.text)
+
+print(result.to_json(indent=2))
 ```
 
 ## Examples
@@ -156,16 +170,20 @@ Runnable examples live in `examples/`:
 ```python
 from adaptive_chunking.chunkers import (
     DelimiterChunker,
+    MarkdownChunker,
     PageIndexChunker,
     PageChunker,
     SectionAwareChunker,
     SemanticChunker,
+    TokenWindowChunker,
 )
 from adaptive_chunking.selector import AdaptiveSelector
 from adaptive_chunking import AdaptiveChunker
 
 selector = AdaptiveSelector(
     chunkers=[
+        MarkdownChunker(max_size=1800),
+        TokenWindowChunker(chunk_tokens=240, overlap_tokens=24),
         SectionAwareChunker(max_size=1800),
         DelimiterChunker(delimiter="\n---\n"),
         PageChunker(page_delimiter="\f"),
@@ -181,6 +199,38 @@ result = AdaptiveChunker(selector=selector).chunk(text)
 heading hierarchy inside each page. Chunks include `page_index`, `heading_path`,
 `section_title`, and `section_instance_id` metadata so repeated headings such as
 `Overview` remain tied to the correct page and section occurrence during retrieval.
+
+Available built-in strategy names can also be discovered at runtime:
+
+```python
+from adaptive_chunking import registry
+
+print(registry.names())
+chunker = registry.create("markdown", max_size=1200)
+```
+
+The current built-ins are:
+
+```text
+code
+delimiter
+fixed-window
+html
+hybrid
+json
+markdown
+page
+page-index
+paragraph
+recursive
+regex-section
+section-aware
+semantic
+sentence
+single
+split-then-merge
+token-window
+```
 
 ## Metrics
 
