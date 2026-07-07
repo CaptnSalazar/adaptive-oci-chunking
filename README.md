@@ -35,6 +35,7 @@ This repo builds on that idea as a practical toolkit. It keeps the core dependen
   - section-aware
   - delimiter-aware
   - page-aware
+  - page-index hierarchical
   - semantic lexical drift
   - regex-guided section splitting
 - Metric-guided selection using paper-aligned intrinsic metrics:
@@ -155,6 +156,7 @@ Runnable examples live in `examples/`:
 ```python
 from adaptive_chunking.chunkers import (
     DelimiterChunker,
+    PageIndexChunker,
     PageChunker,
     SectionAwareChunker,
     SemanticChunker,
@@ -167,12 +169,18 @@ selector = AdaptiveSelector(
         SectionAwareChunker(max_size=1800),
         DelimiterChunker(delimiter="\n---\n"),
         PageChunker(page_delimiter="\f"),
+        PageIndexChunker(page_delimiter="\f"),
         SemanticChunker(max_size=1400, similarity_threshold=0.08),
     ]
 )
 
 result = AdaptiveChunker(selector=selector).chunk(text)
 ```
+
+`PageIndexChunker` is separate from `PageChunker`: it splits by page first, then by
+heading hierarchy inside each page. Chunks include `page_index`, `heading_path`,
+`section_title`, and `section_instance_id` metadata so repeated headings such as
+`Overview` remain tied to the correct page and section occurrence during retrieval.
 
 ## Metrics
 

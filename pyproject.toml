@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "adaptive-oci-chunking"
-version = "0.1.3"
+version = "0.1.4"
 description = "Adaptive document chunking for RAG with optional Oracle Cloud Infrastructure integrations."
 readme = "README.md"
 requires-python = ">=3.10"

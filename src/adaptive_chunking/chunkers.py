@@ -113,6 +113,156 @@ class PageChunker(DelimiterChunker):
     def __init__(self, page_delimiter: str = "\f", max_size: int = 2200) -> None:
         super().__init__(delimiter=page_delimiter, keep_delimiter=False, max_size=max_size)
 
+    def split(self, text: str) -> list[Chunk]:
+        if not self.delimiter or self.delimiter not in text:
+            return [
+                Chunk(
+                    text=chunk.text,
+                    index=chunk.index,
+                    start_char=chunk.start_char,
+                    end_char=chunk.end_char,
+                    metadata={**chunk.metadata, "page_index": 0},
+                )
+                for chunk in self.fallback.split(text)
+            ]
+
+        chunks: list[Chunk] = []
+        cursor = 0
+        page_index = 0
+        while cursor < len(text):
+            split_at = text.find(self.delimiter, cursor)
+            end = len(text) if split_at < 0 else split_at
+            for chunk in self._split_page(text, cursor, end):
+                chunks.append(
+                    Chunk(
+                        text=chunk.text,
+                        index=len(chunks),
+                        start_char=chunk.start_char,
+                        end_char=chunk.end_char,
+                        metadata={**chunk.metadata, "page_index": page_index},
+                    )
+                )
+            if split_at < 0:
+                break
+            cursor = split_at + len(self.delimiter)
+            page_index += 1
+        return chunks
+
+    def _split_page(self, text: str, start: int, end: int) -> list[Chunk]:
+        if end - start <= self.max_size:
+            return self._build_chunks([(start, end)], text)
+        return [
+            Chunk(
+                chunk.text,
+                chunk.index,
+                start + chunk.start_char,
+                start + chunk.end_char,
+                chunk.metadata,
+            )
+            for chunk in self.fallback.split(text[start:end])
+        ]
+
+
+class PageIndexChunker(BaseChunker):
+    name = "page-index"
+
+    def __init__(self, page_delimiter: str = "\f", max_size: int = 1800) -> None:
+        if not page_delimiter:
+            raise ValueError("page_delimiter must be non-empty")
+        if max_size <= 0:
+            raise ValueError("max_size must be positive")
+        self.page_delimiter = page_delimiter
+        self.max_size = max_size
+        self.fallback = RecursiveChunker(chunk_size=max_size)
+        self.heading_pattern = re.compile(
+            r"(?m)^(#{1,6})\s+(.+)$|^(\d+(?:\.\d+)*)\s+([A-Z].+)$"
+        )
+
+    def split(self, text: str) -> list[Chunk]:
+        page_spans = self._page_spans(text)
+        chunks: list[Chunk] = []
+        for page_index, (page_start, page_end) in enumerate(page_spans):
+            page_text = text[page_start:page_end]
+            section_spans = self._section_spans(page_text)
+            for section_index, (section_start, section_end) in enumerate(section_spans):
+                absolute_start = page_start + section_start
+                absolute_end = page_start + section_end
+                metadata = {
+                    **_section_metadata(text, absolute_start, len(chunks)),
+                    "page_index": page_index,
+                    "page_start_char": page_start,
+                    "page_end_char": page_end,
+                    "page_section_index": section_index,
+                    "heading_path": self._heading_path(page_text, section_start),
+                }
+                section_text = text[absolute_start:absolute_end]
+                section_chunks = (
+                    self._build_chunks(
+                        [(absolute_start, absolute_end)],
+                        text,
+                        start_index=len(chunks),
+                    )
+                    if len(section_text) <= self.max_size
+                    else self.fallback.split(section_text)
+                )
+                for chunk in section_chunks:
+                    start_char = (
+                        chunk.start_char
+                        if len(section_text) <= self.max_size
+                        else absolute_start + chunk.start_char
+                    )
+                    end_char = (
+                        chunk.end_char
+                        if len(section_text) <= self.max_size
+                        else absolute_start + chunk.end_char
+                    )
+                    chunks.append(
+                        Chunk(
+                            text=chunk.text,
+                            index=len(chunks),
+                            start_char=start_char,
+                            end_char=end_char,
+                            metadata={**chunk.metadata, **metadata},
+                        )
+                    )
+        return chunks
+
+    def _page_spans(self, text: str) -> list[tuple[int, int]]:
+        if not text:
+            return []
+        spans: list[tuple[int, int]] = []
+        cursor = 0
+        while cursor <= len(text):
+            split_at = text.find(self.page_delimiter, cursor)
+            if split_at < 0:
+                spans.append((cursor, len(text)))
+                break
+            spans.append((cursor, split_at))
+            cursor = split_at + len(self.page_delimiter)
+        return [span for span in spans if text[span[0] : span[1]].strip()]
+
+    def _section_spans(self, page_text: str) -> list[tuple[int, int]]:
+        starts = sorted(
+            {0, len(page_text), *(m.start() for m in self.heading_pattern.finditer(page_text))}
+        )
+        return [
+            (starts[index], starts[index + 1])
+            for index in range(len(starts) - 1)
+            if page_text[starts[index] : starts[index + 1]].strip()
+        ]
+
+    def _heading_path(self, page_text: str, section_start: int) -> list[str]:
+        path: list[str] = []
+        for match in self.heading_pattern.finditer(page_text):
+            if match.start() > section_start:
+                break
+            markdown_level, markdown_title, numbered_level, numbered_title = match.groups()
+            level = len(markdown_level) if markdown_level else numbered_level.count(".") + 1
+            title = markdown_title or numbered_title or ""
+            path = path[: level - 1]
+            path.append(title.strip())
+        return path
+
 
 class RecursiveChunker(BaseChunker):
     name = "recursive"
@@ -189,6 +339,7 @@ class SectionAwareChunker(BaseChunker):
         self.min_size = min_size
         self.max_size = max_size
         self.fallback = SplitThenMergeChunker(min_size=min_size, max_size=max_size)
+        self.oversize_fallback = RecursiveChunker(chunk_size=max_size)
         self.heading_pattern = re.compile(
             r"(?m)^(?:#{1,6}\s+.+|\d+(?:\.\d+)*\s+[A-Z].+|[A-Z][A-Za-z0-9 ,:;&()/-]{3,80})$"
         )
@@ -217,17 +368,31 @@ class SectionAwareChunker(BaseChunker):
         if current_start is not None and current_end is not None:
             merged.append((current_start, current_end))
         chunks: list[Chunk] = []
-        for start, end in merged:
+        for section_index, (start, end) in enumerate(merged):
+            metadata = _section_metadata(text, start, section_index)
             if end - start <= self.max_size:
-                chunks.extend(self._build_chunks([(start, end)], text, start_index=len(chunks)))
+                for chunk in self._build_chunks([(start, end)], text, start_index=len(chunks)):
+                    chunks.append(
+                        Chunk(
+                            chunk.text,
+                            chunk.index,
+                            chunk.start_char,
+                            chunk.end_char,
+                            metadata={**chunk.metadata, **metadata},
+                        )
+                    )
             else:
-                for chunk in self.fallback.split(text[start:end]):
+                fallback_chunks = self.fallback.split(text[start:end])
+                if len(fallback_chunks) == 1 and fallback_chunks[0].size > self.max_size:
+                    fallback_chunks = self.oversize_fallback.split(text[start:end])
+                for chunk in fallback_chunks:
                     chunks.append(
                         Chunk(
                             chunk.text,
                             len(chunks),
                             start + chunk.start_char,
                             start + chunk.end_char,
+                            metadata={**chunk.metadata, **metadata},
                         )
                     )
         return chunks
@@ -288,10 +453,20 @@ class RegexSectionChunker(BaseChunker):
         starts = sorted(set([0, *starts, len(text)]))
         spans = [(starts[index], starts[index + 1]) for index in range(len(starts) - 1)]
         chunks: list[Chunk] = []
-        for start, end in spans:
+        for section_index, (start, end) in enumerate(spans):
             section = text[start:end]
+            metadata = _section_metadata(text, start, section_index)
             if len(section) <= self.max_size:
-                chunks.extend(self._build_chunks([(start, end)], text, start_index=len(chunks)))
+                for chunk in self._build_chunks([(start, end)], text, start_index=len(chunks)):
+                    chunks.append(
+                        Chunk(
+                            chunk.text,
+                            chunk.index,
+                            chunk.start_char,
+                            chunk.end_char,
+                            metadata={**chunk.metadata, **metadata},
+                        )
+                    )
             else:
                 for chunk in self.fallback.split(section):
                     chunks.append(
@@ -300,6 +475,7 @@ class RegexSectionChunker(BaseChunker):
                             index=len(chunks),
                             start_char=start + chunk.start_char,
                             end_char=start + chunk.end_char,
+                            metadata={**chunk.metadata, **metadata},
                         )
                     )
         return [
@@ -317,6 +493,7 @@ def default_chunkers() -> list[BaseChunker]:
         SectionAwareChunker(),
         DelimiterChunker(),
         PageChunker(),
+        PageIndexChunker(),
         SemanticChunker(),
         RegexSectionChunker(),
     ]
@@ -350,3 +527,14 @@ def _trim_span(text: str, start: int, end: int) -> tuple[int, int]:
     while end > start and text[end - 1].isspace():
         end -= 1
     return start, end
+
+
+def _section_metadata(text: str, start: int, section_index: int) -> dict[str, object]:
+    heading = text[start:].splitlines()[0].strip() if text[start:].strip() else ""
+    title = re.sub(r"^(?:#{1,6}\s+|\d+(?:\.\d+)*\s+)", "", heading).strip() or "document"
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "section"
+    return {
+        "section_index": section_index,
+        "section_title": title,
+        "section_instance_id": f"section-{section_index}-{slug}",
+    }

@@ -3,6 +3,7 @@ from adaptive_chunking.chunkers import (
     DelimiterChunker,
     FixedWindowChunker,
     PageChunker,
+    PageIndexChunker,
     RecursiveChunker,
     SectionAwareChunker,
     SemanticChunker,
@@ -10,6 +11,7 @@ from adaptive_chunking.chunkers import (
     default_chunkers,
 )
 from adaptive_chunking.metrics import IntrinsicMetricEvaluator, MetricConfig, MetricWeights
+from adaptive_chunking.retrieval import expand_section_instances
 from adaptive_chunking.selector import AdaptiveSelector
 from adaptive_chunking.text import normalize_space
 
@@ -119,6 +121,58 @@ def test_page_chunker_uses_form_feed_pages() -> None:
 
     assert [chunk.text for chunk in chunks] == ["Page one.", "Page two."]
     assert [chunk.index for chunk in chunks] == [0, 1]
+    assert [chunk.metadata["page_index"] for chunk in chunks] == [0, 1]
+
+
+def test_page_chunker_preserves_page_index_for_oversized_pages() -> None:
+    text = "alpha beta gamma delta\fsecond page"
+    chunks = PageChunker(max_size=12).split(text)
+
+    assert [chunk.metadata["page_index"] for chunk in chunks] == [0, 0, 1]
+    assert [chunk.index for chunk in chunks] == [0, 1, 2]
+
+
+def test_page_index_chunker_chunks_pages_hierarchically() -> None:
+    text = (
+        "# Overview\n"
+        "Intro.\n\n"
+        "## Scope\n"
+        "Scope details.\f"
+        "# Overview\n"
+        "Second page intro.\n\n"
+        "## Scope\n"
+        "Second scope details."
+    )
+    chunks = PageIndexChunker(max_size=80).split(text)
+
+    assert [chunk.text for chunk in chunks] == [
+        "# Overview\nIntro.",
+        "## Scope\nScope details.",
+        "# Overview\nSecond page intro.",
+        "## Scope\nSecond scope details.",
+    ]
+    assert [chunk.metadata["page_index"] for chunk in chunks] == [0, 0, 1, 1]
+    assert chunks[1].metadata["heading_path"] == ["Overview", "Scope"]
+    assert chunks[3].metadata["heading_path"] == ["Overview", "Scope"]
+    assert chunks[1].metadata["section_instance_id"] != chunks[3].metadata[
+        "section_instance_id"
+    ]
+
+
+def test_page_index_chunker_validates_settings() -> None:
+    try:
+        PageIndexChunker(page_delimiter="")
+    except ValueError as exc:
+        assert "page_delimiter" in str(exc)
+    else:
+        raise AssertionError("PageIndexChunker should reject an empty delimiter")
+
+    try:
+        PageIndexChunker(max_size=0)
+    except ValueError as exc:
+        assert "max_size" in str(exc)
+    else:
+        raise AssertionError("PageIndexChunker should reject a non-positive max_size")
 
 
 def test_section_aware_chunker_prefers_heading_boundaries() -> None:
@@ -127,6 +181,39 @@ def test_section_aware_chunker_prefers_heading_boundaries() -> None:
 
     assert len(chunks) >= 2
     assert all(chunk.text.startswith("#") for chunk in chunks)
+
+
+def test_section_chunks_have_unique_instance_ids_for_repeated_headings() -> None:
+    text = "# Overview\nFirst body.\n\n# Details\nMiddle body.\n\n# Overview\nSecond body."
+    chunks = SectionAwareChunker(min_size=5, max_size=30).split(text)
+
+    overview_chunks = [chunk for chunk in chunks if chunk.metadata["section_title"] == "Overview"]
+
+    assert len(overview_chunks) == 2
+    assert overview_chunks[0].metadata["section_instance_id"] != overview_chunks[1].metadata[
+        "section_instance_id"
+    ]
+
+
+def test_expand_section_instances_returns_all_chunks_under_fetched_section() -> None:
+    text = "# Overview\n" + ("alpha " * 20) + "\n\n# Other\nbeta"
+    chunks = SectionAwareChunker(min_size=5, max_size=40).split(text)
+    fetched = [chunks[1]]
+
+    expanded = expand_section_instances(chunks, fetched)
+
+    assert len(expanded) > 1
+    assert {chunk.metadata["section_instance_id"] for chunk in expanded} == {
+        fetched[0].metadata["section_instance_id"]
+    }
+
+
+def test_expand_section_instances_keeps_generator_hits_without_section_metadata() -> None:
+    chunks = FixedWindowChunker(chunk_size=5, overlap=0).split("alpha beta")
+
+    expanded = expand_section_instances(chunks, (chunk for chunk in chunks[:1]))
+
+    assert expanded == chunks[:1]
 
 
 def test_semantic_chunker_returns_ordered_chunks() -> None:
