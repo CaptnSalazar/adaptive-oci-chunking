@@ -8,7 +8,7 @@ from adaptive_chunking.retrieval import expand_section_instances
 try:
     __version__ = version("adaptive-oci-chunking")
 except PackageNotFoundError:  # pragma: no cover
-    __version__ = "0.2.0"
+    __version__ = "0.2.1"
 
 __all__ = [
     "__version__",

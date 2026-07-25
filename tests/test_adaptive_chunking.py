@@ -392,3 +392,81 @@ def test_llama_index_adapter_has_helpful_missing_dependency_error() -> None:
     else:
         # Dependency is installed in this environment, which is also fine.
         assert True
+
+
+def test_langchain_adapter_preserves_source_and_adaptive_metadata() -> None:
+    from adaptive_chunking.langchain import LangChainAdaptiveTextSplitter, TextSplitter
+
+    if TextSplitter is None:
+        return
+
+    from langchain_core.documents import Document as LangChainDocument
+
+    splitter = LangChainAdaptiveTextSplitter(
+        chunker=AdaptiveChunker(config=ChunkingConfig(strategies=["markdown"]))
+    )
+    documents = splitter.split_documents(
+        [LangChainDocument(page_content="# Title\nBody", metadata={"source": "guide.md"})]
+    )
+
+    assert len(documents) == 1
+    assert documents[0].metadata["source"] == "guide.md"
+    assert documents[0].metadata["strategy_name"] == "markdown"
+    assert documents[0].metadata["start_char"] == 0
+    assert documents[0].metadata["end_char"] == len("# Title\nBody")
+
+
+def test_langchain_adapter_rejects_mismatched_metadata() -> None:
+    from adaptive_chunking.langchain import LangChainAdaptiveTextSplitter, TextSplitter
+
+    if TextSplitter is None:
+        return
+
+    splitter = LangChainAdaptiveTextSplitter()
+    try:
+        splitter.create_documents(["first", "second"], metadatas=[])
+    except ValueError as exc:
+        assert "metadatas" in str(exc)
+    else:
+        raise AssertionError("mismatched metadata should raise ValueError")
+
+
+def test_llama_index_parser_is_a_native_node_parser_with_relationships() -> None:
+    from adaptive_chunking.llama_index import LlamaIndexAdaptiveParser, NodeParser
+
+    if NodeParser is None:
+        return
+
+    from llama_index.core.schema import Document as LlamaDocument
+    from llama_index.core.schema import NodeRelationship
+
+    parser = LlamaIndexAdaptiveParser(
+        chunker=AdaptiveChunker(config=ChunkingConfig(strategies=["markdown"]))
+    )
+    source = LlamaDocument(text="# Title\nBody", metadata={"source": "guide.md"})
+    nodes = parser.get_nodes_from_documents([source])
+
+    assert isinstance(parser, NodeParser)
+    assert len(nodes) == 1
+    assert nodes[0].metadata["source"] == "guide.md"
+    assert nodes[0].metadata["strategy_name"] == "markdown"
+    assert nodes[0].source_node is not None
+    assert nodes[0].relationships[NodeRelationship.SOURCE].node_id == source.id_
+
+
+def test_llama_index_parser_links_neighbouring_nodes() -> None:
+    from adaptive_chunking.llama_index import LlamaIndexAdaptiveParser, NodeParser
+
+    if NodeParser is None:
+        return
+
+    from llama_index.core.schema import Document as LlamaDocument
+    from llama_index.core.schema import NodeRelationship
+
+    selector = AdaptiveSelector(chunkers=[FixedWindowChunker(chunk_size=5, overlap=0)])
+    parser = LlamaIndexAdaptiveParser(chunker=AdaptiveChunker(selector=selector))
+    nodes = parser.get_nodes_from_documents([LlamaDocument(text="abcdefghij")])
+
+    assert len(nodes) == 2
+    assert nodes[0].relationships[NodeRelationship.NEXT].node_id == nodes[1].node_id
+    assert nodes[1].relationships[NodeRelationship.PREVIOUS].node_id == nodes[0].node_id

@@ -298,21 +298,33 @@ This makes the selection process explainable: if a chunker loses, you can see wh
 ## LangChain
 
 ```python
+from langchain_core.documents import Document
 from adaptive_chunking.langchain import LangChainAdaptiveTextSplitter
 
 splitter = LangChainAdaptiveTextSplitter()
-documents = splitter.create_documents([text])
+documents = splitter.split_documents([
+    Document(page_content=text, metadata={"source": "policy.md"})
+])
+
+# Every output Document retains source metadata plus document_id, chunk_index,
+# start_char, end_char, strategy_name, adaptive_score, and structure metadata.
 ```
 
 ## LlamaIndex
 
 ```python
-from adaptive_chunking import AdaptiveChunker
-from adaptive_chunking.llama_index import result_to_llama_nodes
+from llama_index.core.schema import Document
+from adaptive_chunking.llama_index import LlamaIndexAdaptiveParser
 
-result = AdaptiveChunker().chunk(text, document_id="policy")
-nodes = result_to_llama_nodes(result)
+parser = LlamaIndexAdaptiveParser()
+nodes = parser.get_nodes_from_documents([
+    Document(text=text, metadata={"source": "policy.md"})
+])
 ```
+
+`LlamaIndexAdaptiveParser` is a native LlamaIndex `NodeParser`, so it can also be
+passed directly to an `IngestionPipeline`. Output nodes retain document metadata,
+adaptive diagnostics, offsets, and standard source/previous/next relationships.
 
 ## OCI Usage
 
@@ -350,8 +362,8 @@ src/adaptive_chunking/
   metrics.py       # intrinsic metric implementations
   selector.py      # weighted adaptive strategy selection
   pipeline.py      # high-level AdaptiveChunker
-  langchain.py     # optional LangChain TextSplitter adapter
-  llama_index.py   # optional LlamaIndex node helpers
+  langchain.py     # optional metadata-preserving LangChain adapter
+  llama_index.py   # optional native LlamaIndex NodeParser and node helpers
   oci.py           # optional OCI adapters
   api.py           # optional FastAPI app
   cli.py           # command line interface
