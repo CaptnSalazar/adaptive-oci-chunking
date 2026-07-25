@@ -5,6 +5,18 @@ from typing import Any
 from adaptive_chunking.models import Chunk, ChunkingResult
 from adaptive_chunking.pipeline import AdaptiveChunker
 
+try:
+    from llama_index.core.node_parser import NodeParser
+    from llama_index.core.schema import BaseNode, MetadataMode, NodeRelationship, TextNode
+    from pydantic import Field
+except ImportError:  # pragma: no cover
+    Field = None  # type: ignore[assignment]
+    NodeParser = None  # type: ignore[assignment]
+    BaseNode = Any  # type: ignore[assignment,misc]
+    MetadataMode = None  # type: ignore[assignment]
+    NodeRelationship = None  # type: ignore[assignment]
+    TextNode = None  # type: ignore[assignment]
+
 
 def chunks_to_llama_nodes(
     chunks: list[Chunk],
@@ -12,13 +24,11 @@ def chunks_to_llama_nodes(
     document_id: str = "document",
     extra_metadata: dict[str, Any] | None = None,
 ) -> list[Any]:
-    try:
-        from llama_index.core.schema import TextNode
-    except ImportError as exc:  # pragma: no cover
+    if TextNode is None:  # pragma: no cover
         raise RuntimeError(
             "Install LlamaIndex support with "
             "`pip install 'adaptive-oci-chunking[llama-index]'`."
-        ) from exc
+        )
 
     metadata = extra_metadata or {}
     return [
@@ -46,30 +56,59 @@ def result_to_llama_nodes(result: ChunkingResult) -> list[Any]:
     )
 
 
-class LlamaIndexAdaptiveParser:
-    """Small adapter with the same practical behavior as a LlamaIndex node parser."""
+if NodeParser is not None:
 
-    def __init__(self, chunker: AdaptiveChunker | None = None) -> None:
-        self.chunker = chunker or AdaptiveChunker()
+    class LlamaIndexAdaptiveParser(NodeParser):
+        """A native LlamaIndex NodeParser backed by :class:`AdaptiveChunker`.
 
-    def get_nodes_from_documents(self, documents: list[Any], **_: Any) -> list[Any]:
-        nodes: list[Any] = []
-        for document_index, document in enumerate(documents):
-            text = getattr(document, "text", None) or getattr(document, "get_content", lambda: "")()
-            metadata = dict(getattr(document, "metadata", {}) or {})
-            document_id = str(
-                metadata.get("document_id") or getattr(document, "id_", document_index)
+        The parser preserves document metadata, chunk offsets, and adaptive-selection
+        diagnostics while creating source and neighbouring-node relationships through
+        LlamaIndex's standard ``NodeParser`` lifecycle.
+        """
+
+        chunker: AdaptiveChunker = Field(default_factory=AdaptiveChunker, exclude=True)
+
+        def _parse_nodes(
+            self,
+            nodes: list[BaseNode],
+            show_progress: bool = False,
+            **_: Any,
+        ) -> list[BaseNode]:
+            parsed_nodes: list[BaseNode] = []
+            for source_node in nodes:
+                document_id = str(source_node.id_)
+                text = source_node.get_content(metadata_mode=MetadataMode.NONE)
+                result = self.chunker.chunk(text, document_id=document_id)
+                for chunk in result.chunks:
+                    parsed_nodes.append(
+                        TextNode(
+                            text=chunk.text,
+                            id_=self.id_func(chunk.index, source_node),
+                            metadata={
+                                **chunk.metadata,
+                                "document_id": document_id,
+                                "chunk_index": chunk.index,
+                                "start_char": chunk.start_char,
+                                "end_char": chunk.end_char,
+                                "strategy_name": result.strategy_name,
+                                "adaptive_score": result.score,
+                            },
+                            start_char_idx=chunk.start_char,
+                            end_char_idx=chunk.end_char,
+                            relationships={
+                                NodeRelationship.SOURCE: source_node.as_related_node_info()
+                            },
+                        )
+                    )
+            return parsed_nodes
+
+else:
+
+    class LlamaIndexAdaptiveParser:
+        """Placeholder that explains how to enable the optional dependency."""
+
+        def __init__(self, *_: Any, **__: Any) -> None:
+            raise RuntimeError(
+                "Install LlamaIndex support with "
+                "`pip install 'adaptive-oci-chunking[llama-index]'`."
             )
-            result = self.chunker.chunk(text, document_id=document_id)
-            nodes.extend(
-                chunks_to_llama_nodes(
-                    result.chunks,
-                    document_id=document_id,
-                    extra_metadata={
-                        **metadata,
-                        "strategy_name": result.strategy_name,
-                        "adaptive_score": result.score,
-                    },
-                )
-            )
-        return nodes
