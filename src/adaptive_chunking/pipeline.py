@@ -16,6 +16,19 @@ class AdaptiveChunker:
     def chunk(self, text: str, document_id: str = "document") -> ChunkingResult:
         return self.chunk_document(Document(text=text, document_id=document_id))
 
+    def chunk_file(self, path: str, document_id: str | None = None) -> ChunkingResult:
+        """Load a supported text file or PDF and chunk its extracted text."""
+        from adaptive_chunking.io import load_document
+
+        document = load_document(path)
+        if document_id is not None:
+            document = Document(
+                text=document.text,
+                document_id=document_id,
+                metadata=document.metadata,
+            )
+        return self.chunk_document(document)
+
     def chunk_document(self, document: Document) -> ChunkingResult:
         candidates = self.selector.rank(document.text)
         if not candidates:

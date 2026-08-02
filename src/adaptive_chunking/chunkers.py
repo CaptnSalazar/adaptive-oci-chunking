@@ -190,7 +190,7 @@ class PageIndexChunker(BaseChunker):
         chunks: list[Chunk] = []
         for page_index, (page_start, page_end) in enumerate(page_spans):
             page_text = text[page_start:page_end]
-            section_spans = self._section_spans(page_text)
+            section_spans = self._section_spans(page_text, text)
             for section_index, (section_start, section_end) in enumerate(section_spans):
                 absolute_start = page_start + section_start
                 absolute_end = page_start + section_end
@@ -200,7 +200,7 @@ class PageIndexChunker(BaseChunker):
                     "page_start_char": page_start,
                     "page_end_char": page_end,
                     "page_section_index": section_index,
-                    "heading_path": self._heading_path(page_text, section_start),
+                    "heading_path": self._heading_path(page_text, section_start, text),
                 }
                 section_text = text[absolute_start:absolute_end]
                 section_chunks = (
@@ -248,9 +248,17 @@ class PageIndexChunker(BaseChunker):
             cursor = split_at + len(self.page_delimiter)
         return [span for span in spans if text[span[0] : span[1]].strip()]
 
-    def _section_spans(self, page_text: str) -> list[tuple[int, int]]:
+    def _section_spans(self, page_text: str, source_text: str) -> list[tuple[int, int]]:
         starts = sorted(
-            {0, len(page_text), *(m.start() for m in self.heading_pattern.finditer(page_text))}
+            {
+                0,
+                len(page_text),
+                *(
+                    match.start()
+                    for match in self.heading_pattern.finditer(page_text)
+                    if not _is_ignored_heading(_heading_title(match), source_text)
+                ),
+            }
         )
         return [
             (starts[index], starts[index + 1])
@@ -258,14 +266,16 @@ class PageIndexChunker(BaseChunker):
             if page_text[starts[index] : starts[index + 1]].strip()
         ]
 
-    def _heading_path(self, page_text: str, section_start: int) -> list[str]:
+    def _heading_path(self, page_text: str, section_start: int, source_text: str) -> list[str]:
         path: list[str] = []
         for match in self.heading_pattern.finditer(page_text):
             if match.start() > section_start:
                 break
             markdown_level, markdown_title, numbered_level, numbered_title = match.groups()
+            title = _heading_title(match)
+            if _is_ignored_heading(title, source_text):
+                continue
             level = len(markdown_level) if markdown_level else numbered_level.count(".") + 1
-            title = markdown_title or numbered_title or ""
             path = path[: level - 1]
             path.append(title.strip())
         return path
@@ -357,7 +367,15 @@ class SectionAwareChunker(BaseChunker):
 
     def split(self, text: str) -> list[Chunk]:
         starts = sorted(
-            {0, len(text), *(match.start() for match in self.heading_pattern.finditer(text))}
+            {
+                0,
+                len(text),
+                *(
+                    match.start()
+                    for match in self.heading_pattern.finditer(text)
+                    if not _is_ignored_heading(_heading_title(match), text)
+                ),
+            }
         )
         spans = [(starts[index], starts[index + 1]) for index in range(len(starts) - 1)]
         merged: list[tuple[int, int]] = []
@@ -577,7 +595,11 @@ class MarkdownChunker(BaseChunker):
         spans = _markdown_block_spans(text)
         if not spans:
             return []
-        heading_starts = {match.start() for match in self.heading_pattern.finditer(text)}
+        heading_starts = {
+            match.start()
+            for match in self.heading_pattern.finditer(text)
+            if not _is_ignored_heading(_heading_title(match), text)
+        }
         section_spans: list[tuple[int, int]] = []
         current_start: int | None = None
         current_end: int | None = None
@@ -858,12 +880,81 @@ def _json_records(data: Any, path: str = "$") -> list[tuple[str, Any]]:
 def _section_metadata(text: str, start: int, section_index: int) -> dict[str, object]:
     heading = text[start:].splitlines()[0].strip() if text[start:].strip() else ""
     title = re.sub(r"^(?:#{1,6}\s+|\d+(?:\.\d+)*\s+)", "", heading).strip() or "document"
+    if _is_ignored_heading(title, text):
+        title = "document"
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "section"
     return {
         "section_index": section_index,
         "section_title": title,
         "section_instance_id": f"section-{section_index}-{slug}",
     }
+
+
+def add_section_paths(text: str, chunks: list[Chunk]) -> list[Chunk]:
+    """Attach the active structural path to every chunk.
+
+    Repeated page furniture such as headers and footers is deliberately excluded
+    from the heading stream, so it cannot become a retrieval section.
+    """
+    headings = _section_heading_events(text)
+    enriched: list[Chunk] = []
+    for chunk in chunks:
+        path: list[str] = []
+        for position, level, title in headings:
+            if position > chunk.start_char:
+                break
+            path = path[: level - 1]
+            path.append(title)
+        enriched.append(
+            Chunk(
+                text=chunk.text,
+                index=chunk.index,
+                start_char=chunk.start_char,
+                end_char=chunk.end_char,
+                metadata={**chunk.metadata, "section_path": path},
+            )
+        )
+    return enriched
+
+
+def _section_heading_events(text: str) -> list[tuple[int, int, str]]:
+    pattern = re.compile(
+        r"(?m)^(?:(?P<markdown>#{1,6})\s+(?P<markdown_title>.+)|"
+        r"(?P<number>\d+(?:\.\d+)*)\s+(?P<number_title>[A-Z].+)|"
+        r"(?P<title>[A-Z][A-Za-z0-9 ,:;&()/-]{3,80}))$"
+    )
+    events: list[tuple[int, int, str]] = []
+    for match in pattern.finditer(text):
+        title = _heading_title(match)
+        if _is_ignored_heading(title, text):
+            continue
+        markdown_level = match.groupdict().get("markdown")
+        number = match.groupdict().get("number")
+        level = len(markdown_level) if markdown_level else (number.count(".") + 1 if number else 1)
+        events.append((match.start(), level, title))
+    return events
+
+
+def _heading_title(match: re.Match[str]) -> str:
+    groups = match.groupdict()
+    title = groups.get("markdown_title") or groups.get("number_title") or groups.get("title")
+    if title is None:
+        title = match.group()
+    return re.sub(r"^(?:#{1,6}\s+|\d+(?:\.\d+)*\s+)", "", title).strip()
+
+
+def _is_ignored_heading(title: str, source_text: str) -> bool:
+    """Return true for page furniture, not meaningful document section headings."""
+    normalized = re.sub(r"\s+", " ", title).strip().casefold()
+    if not normalized:
+        return True
+    if re.fullmatch(
+        r"(?:header|footer|page\s*\d+(?:\s*(?:of|/)\s*\d+)?|"
+        r"confidential|internal use only|copyright(?:\s+\d{4})?)",
+        normalized,
+    ):
+        return True
+    return False
 
 
 def _register_default_chunkers() -> None:

@@ -204,6 +204,27 @@ def test_section_chunks_have_unique_instance_ids_for_repeated_headings() -> None
     ]
 
 
+def test_section_chunking_ignores_headers_and_footers_as_section_boundaries() -> None:
+    text = (
+        "# Header\nCompany handbook\n\n# Access\nAccess policy details.\n\n"
+        "# Footer\nInternal use only."
+    )
+    chunks = SectionAwareChunker(min_size=5, max_size=24).split(text)
+
+    assert all(chunk.metadata["section_title"] not in {"Header", "Footer"} for chunk in chunks)
+
+
+def test_adaptive_results_attach_section_path_to_every_chunk() -> None:
+    text = "# Header\nCompany handbook\n\n# Access\nAccess policy details.\n\n## MFA\nRequired."
+    result = AdaptiveChunker(
+        selector=AdaptiveSelector(chunkers=[MarkdownChunker(min_size=5, max_size=30)])
+    ).chunk(text)
+
+    assert all("section_path" in chunk.metadata for chunk in result.chunks)
+    assert all("Header" not in chunk.metadata["section_path"] for chunk in result.chunks)
+    assert any(chunk.metadata["section_path"] == ["Access", "MFA"] for chunk in result.chunks)
+
+
 def test_expand_section_instances_returns_all_chunks_under_fetched_section() -> None:
     text = "# Overview\n" + ("alpha " * 20) + "\n\n# Other\nbeta"
     chunks = SectionAwareChunker(min_size=5, max_size=40).split(text)
@@ -429,6 +450,21 @@ def test_langchain_adapter_rejects_mismatched_metadata() -> None:
         assert "metadatas" in str(exc)
     else:
         raise AssertionError("mismatched metadata should raise ValueError")
+
+
+def test_langchain_adapter_can_chunk_a_file(tmp_path) -> None:
+    from adaptive_chunking.langchain import LangChainAdaptiveTextSplitter, TextSplitter
+
+    if TextSplitter is None:
+        return
+
+    source = tmp_path / "guide.md"
+    source.write_text("# Guide\n\nUseful details.", encoding="utf-8")
+    documents = LangChainAdaptiveTextSplitter().split_file(source)
+
+    assert documents
+    assert documents[0].metadata["source_format"] == "md"
+    assert documents[0].metadata["document_id"] == "guide"
 
 
 def test_llama_index_parser_is_a_native_node_parser_with_relationships() -> None:

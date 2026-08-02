@@ -87,6 +87,7 @@ The package installs the core local chunking toolkit. Optional extras are availa
 ```bash
 pip install "adaptive-oci-chunking[oci]"
 pip install "adaptive-oci-chunking[api]"
+pip install "adaptive-oci-chunking[pdf]"
 pip install "adaptive-oci-chunking[langchain,llama-index]"
 ```
 
@@ -155,6 +156,27 @@ for chunk in result.chunks:
 print(result.to_json(indent=2))
 ```
 
+### PDF files
+
+Install the PDF extra, then pass a PDF path directly to the high-level chunker.
+Pages are separated internally with form-feed boundaries, so the `page` and
+`page-index` candidate strategies retain `page_index` metadata when selected.
+
+```bash
+pip install "adaptive-oci-chunking[pdf]"
+adaptive-chunk chunk handbook.pdf --json
+```
+
+```python
+from adaptive_chunking import AdaptiveChunker
+
+result = AdaptiveChunker().chunk_file("handbook.pdf")
+print(result.strategy_name, result.to_json(indent=2))
+```
+
+PDF extraction supports text-based PDFs. Scan- or image-only PDFs must be OCRed
+before chunking.
+
 ## Examples
 
 Runnable examples live in `examples/`:
@@ -197,8 +219,13 @@ result = AdaptiveChunker(selector=selector).chunk(text)
 
 `PageIndexChunker` is separate from `PageChunker`: it splits by page first, then by
 heading hierarchy inside each page. Chunks include `page_index`, `heading_path`,
-`section_title`, and `section_instance_id` metadata so repeated headings such as
+`section_path`, `section_title`, and `section_instance_id` metadata so repeated headings such as
 `Overview` remain tied to the correct page and section occurrence during retrieval.
+
+Every chunk returned through `AdaptiveChunker` also has a `section_path` list for
+retrieval filtering, for example `["Access", "MFA"]`. Lines labelled as document
+headers, footers, page numbers, or standard page-furniture labels are ignored as
+section boundaries.
 
 Available built-in strategy names can also be discovered at runtime:
 
@@ -306,6 +333,9 @@ documents = splitter.split_documents([
     Document(page_content=text, metadata={"source": "policy.md"})
 ])
 
+# Or load and chunk a PDF directly (requires the `pdf` extra too).
+pdf_documents = splitter.split_pdf("handbook.pdf")
+
 # Every output Document retains source metadata plus document_id, chunk_index,
 # start_char, end_char, strategy_name, adaptive_score, and structure metadata.
 ```
@@ -320,6 +350,14 @@ parser = LlamaIndexAdaptiveParser()
 nodes = parser.get_nodes_from_documents([
     Document(text=text, metadata={"source": "policy.md"})
 ])
+```
+
+For a direct PDF-to-node workflow:
+
+```python
+from adaptive_chunking.llama_index import pdf_to_llama_nodes
+
+nodes = pdf_to_llama_nodes("handbook.pdf")
 ```
 
 `LlamaIndexAdaptiveParser` is a native LlamaIndex `NodeParser`, so it can also be

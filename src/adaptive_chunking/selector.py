@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from adaptive_chunking.chunkers import BaseChunker, default_chunkers
+from adaptive_chunking.chunkers import BaseChunker, add_section_paths, default_chunkers
 from adaptive_chunking.metrics import IntrinsicMetricEvaluator, MetricConfig
 from adaptive_chunking.models import CandidateResult, ChunkingConfig
 from adaptive_chunking.registry import registry
@@ -32,6 +32,7 @@ class AdaptiveSelector:
             chunks = chunker.split(text)
             if self.config.max_chunks is not None:
                 chunks = chunks[: self.config.max_chunks]
+            chunks = add_section_paths(text, chunks)
             metrics = self.evaluator.evaluate(text, chunks)
             candidates.append(CandidateResult(chunker.name, chunks, metrics))
         return sorted(

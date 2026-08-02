@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from adaptive_chunking.models import Chunk, ChunkingResult
@@ -56,6 +57,43 @@ def result_to_llama_nodes(result: ChunkingResult) -> list[Any]:
     )
 
 
+def file_to_llama_nodes(
+    path: str | Path,
+    *,
+    chunker: AdaptiveChunker | None = None,
+    document_id: str | None = None,
+    extra_metadata: dict[str, Any] | None = None,
+) -> list[Any]:
+    """Load a supported file, including a PDF, and convert adaptive chunks to nodes."""
+    from adaptive_chunking.io import load_document
+
+    document = load_document(path)
+    resolved_document_id = document_id or document.document_id
+    result = (chunker or AdaptiveChunker()).chunk(
+        document.text, document_id=resolved_document_id
+    )
+    return chunks_to_llama_nodes(
+        result.chunks,
+        document_id=resolved_document_id,
+        extra_metadata={
+            **document.metadata,
+            **(extra_metadata or {}),
+            "strategy_name": result.strategy_name,
+            "adaptive_score": result.score,
+        },
+    )
+
+
+def pdf_to_llama_nodes(
+    path: str | Path,
+    **kwargs: Any,
+) -> list[Any]:
+    """Load a text-based PDF and return LlamaIndex nodes with page-aware metadata."""
+    if Path(path).suffix.lower() != ".pdf":
+        raise ValueError("pdf_to_llama_nodes requires a .pdf file")
+    return file_to_llama_nodes(path, **kwargs)
+
+
 if NodeParser is not None:
 
     class LlamaIndexAdaptiveParser(NodeParser):
@@ -104,7 +142,7 @@ if NodeParser is not None:
 
 else:
 
-    class LlamaIndexAdaptiveParser:
+    class LlamaIndexAdaptiveParser:  # type: ignore[no-redef]
         """Placeholder that explains how to enable the optional dependency."""
 
         def __init__(self, *_: Any, **__: Any) -> None:
