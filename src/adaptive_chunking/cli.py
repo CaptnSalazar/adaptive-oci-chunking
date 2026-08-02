@@ -7,7 +7,6 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from adaptive_chunking.io import load_text_file
 from adaptive_chunking.models import ChunkingConfig
 from adaptive_chunking.pipeline import AdaptiveChunker
 from adaptive_chunking.registry import registry
@@ -25,7 +24,7 @@ def main() -> None:
 def chunk(
     path: Annotated[
         Path,
-        typer.Argument(exists=True, readable=True, help="Text or Markdown file to chunk."),
+        typer.Argument(exists=True, readable=True, help="Text, Markdown, or PDF file to chunk."),
     ],
     document_id: Annotated[
         str | None,
@@ -44,9 +43,8 @@ def chunk(
         typer.Option("--include-candidates", help="Include every candidate in JSON output."),
     ] = False,
 ) -> None:
-    text = load_text_file(path)
     config = ChunkingConfig(strategies=strategy)
-    result = AdaptiveChunker(config=config).chunk(text, document_id=document_id or path.stem)
+    result = AdaptiveChunker(config=config).chunk_file(str(path), document_id=document_id)
     if json_output:
         console.print(result.to_json(include_candidates=include_candidates, indent=2))
         return

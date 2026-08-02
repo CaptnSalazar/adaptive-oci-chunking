@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import Any
 
 from adaptive_chunking.pipeline import AdaptiveChunker
@@ -9,8 +10,8 @@ try:
     from langchain_core.documents import Document as LangChainDocument
     from langchain_text_splitters import TextSplitter
 except ImportError:  # pragma: no cover
-    LangChainDocument = None  # type: ignore[assignment]
-    TextSplitter = None  # type: ignore[assignment]
+    LangChainDocument = None  # type: ignore[assignment,misc]
+    TextSplitter = None  # type: ignore[assignment,misc]
 
 _BaseTextSplitter = TextSplitter if TextSplitter is not None else object
 
@@ -79,6 +80,40 @@ class LangChainAdaptiveTextSplitter(_BaseTextSplitter):  # type: ignore[misc,val
     def transform_documents(self, documents: Sequence[Any], **_: Any) -> list[Any]:
         """Support LangChain's document-transformer convention."""
         return self.split_documents(documents)
+
+    def split_file(
+        self,
+        path: str | Path,
+        *,
+        document_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> list[Any]:
+        """Load a supported file, including PDFs, and return chunked LangChain documents."""
+        from adaptive_chunking.io import load_document
+
+        source = load_document(path)
+        source_metadata = {**source.metadata, **(metadata or {})}
+        return self._chunk_to_documents(
+            source.text,
+            source_metadata,
+            fallback_document_id=document_id or source.document_id,
+        )
+
+    def split_pdf(
+        self,
+        path: str | Path,
+        *,
+        document_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> list[Any]:
+        """Load and chunk a text-based PDF.
+
+        This is an explicit convenience alias for :meth:`split_file`; scanned PDFs
+        need OCR before they can be chunked.
+        """
+        if Path(path).suffix.lower() != ".pdf":
+            raise ValueError("split_pdf requires a .pdf file")
+        return self.split_file(path, document_id=document_id, metadata=metadata)
 
     def _chunk_to_documents(
         self,

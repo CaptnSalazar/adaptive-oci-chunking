@@ -1,9 +1,11 @@
 from pathlib import Path
+from types import ModuleType
 
 from typer.testing import CliRunner
 
-from adaptive_chunking import AdaptiveChunker, __version__
+from adaptive_chunking import AdaptiveChunker, __version__, load_document
 from adaptive_chunking.cli import app
+from adaptive_chunking.io import load_pdf_file
 
 runner = CliRunner()
 
@@ -62,6 +64,41 @@ def test_cli_can_limit_strategy(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert '"strategy_name": "single"' in result.stdout
+
+
+def test_file_api_loads_and_chunks_text_files(tmp_path: Path) -> None:
+    sample = tmp_path / "guide.md"
+    sample.write_text("# Guide\n\nChunk this document.", encoding="utf-8")
+
+    document = load_document(sample)
+    result = AdaptiveChunker().chunk_file(str(sample))
+
+    assert document.document_id == "guide"
+    assert document.metadata["source_format"] == "md"
+    assert result.document_id == "guide"
+    assert result.chunks
+
+
+def test_pdf_loader_preserves_page_boundaries(monkeypatch, tmp_path: Path) -> None:
+    class Page:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def extract_text(self) -> str:
+            return self.text
+
+    class Reader:
+        def __init__(self, _: str) -> None:
+            self.pages = [Page("First page"), Page("Second page")]
+
+    fake_pypdf = ModuleType("pypdf")
+    fake_pypdf.PdfReader = Reader  # type: ignore[attr-defined]
+    monkeypatch.setitem(__import__("sys").modules, "pypdf", fake_pypdf)
+    document = load_pdf_file(tmp_path / "handbook.pdf")
+
+    assert document.text == "First page\fSecond page"
+    assert document.document_id == "handbook"
+    assert document.metadata["page_count"] == 2
 
 
 def test_api_accepts_strategy_config_when_fastapi_installed() -> None:
