@@ -1,8 +1,8 @@
 <div align="center">
 
-# Adaptive OCI Chunking
+# Adaptive Chunking for RAG
 
-**Adaptive chunking toolkit for RAG with OCI, LangChain, and LlamaIndex support**
+**Automatically choose better chunks per document, with explainable scoring and optional OCI support**
 
 [![CI](https://github.com/CaptnSalazar/adaptive-oci-chunking/actions/workflows/ci.yml/badge.svg)](https://github.com/CaptnSalazar/adaptive-oci-chunking/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -11,19 +11,64 @@
 
 </div>
 
-Adaptive OCI Chunking is an extensible Python implementation for document-aware chunk selection in Retrieval-Augmented Generation (RAG). It is inspired by Ekimetrics' `adaptive-chunking` repository and the paper _Adaptive Chunking: Optimizing Chunking-Method Selection for RAG_.
+Adaptive Chunking for RAG helps you stop guessing which splitter to use. It tries multiple chunking strategies for each document, scores the candidates with intrinsic quality metrics, and returns the best chunks with diagnostics that explain the choice.
 
-The package evaluates several chunking strategies for each document, scores them with intrinsic metrics, and selects the best candidate before indexing or generation. Oracle Cloud Infrastructure (OCI) integrations are optional: the core chunking engine runs locally, while OCI Object Storage and Generative AI can be enabled when needed.
+The Python package is published as `adaptive-oci-chunking` because it includes optional Oracle Cloud Infrastructure adapters, but the core library is cloud-neutral and runs locally. OCI Object Storage and Generative AI support are opt-in extras, not required dependencies.
+
+Use it when:
+
+- your RAG pipeline contains mixed PDFs, Markdown, policy docs, docs-as-code, or long structured text;
+- recursive/fixed chunking cuts through sections, tables, references, or code blocks;
+- you want chunk-level metadata, offsets, section paths, and selection diagnostics before indexing;
+- you need a drop-in chunking step for LangChain, LlamaIndex, vector databases, or a custom ingestion pipeline.
+
+```bash
+pip install adaptive-oci-chunking
+adaptive-chunk chunk handbook.md --include-candidates --json
+```
+
+```python
+from adaptive_chunking import AdaptiveChunker
+
+result = AdaptiveChunker().chunk_file("handbook.md")
+
+print(result.strategy_name, round(result.score, 3))
+for chunk in result.chunks:
+    print(chunk.metadata.get("section_path"), chunk.text[:120])
+```
+
+## Why not just use one splitter?
+
+No single chunking method works best for every document in a RAG pipeline. A Markdown handbook, a legal PDF, a JSON export, and a code file usually need different boundaries. Adaptive chunking treats chunking as a selection problem: generate candidate chunks, score each candidate, and keep the best result for that document.
+
+The selection is inspectable. If a strategy loses, you can see whether it dropped content, duplicated too much text, broke natural boundaries, produced poor cohesion, or missed the target size.
+
+## Try the adoption-focused assets
+
+- Benchmark your own documents against fixed, recursive, Markdown, section-aware, and token-window strategies:
+
+  ```bash
+  python benchmarks/compare_chunkers.py examples/benchmark_policy.md --format markdown
+  ```
+
+- Wire adaptive chunks into vector database ingestion recipes:
+
+  ```bash
+  python examples/vector_store_ingestion.py examples/sample.md
+  ```
+
+- Run the local playground for side-by-side chunk inspection:
+
+  ```bash
+  pip install "adaptive-oci-chunking[demo]"
+  streamlit run demos/streamlit_app.py
+  ```
 
 ## Architecture
 
 ![Adaptive OCI Chunking architecture](Architecture.png)
 
-## What is Adaptive Chunking?
-
-No single chunking method works best for every document in a RAG pipeline. Adaptive chunking treats chunking as a selection problem: try multiple splitting strategies, score each result with intrinsic quality metrics, and choose the best candidate for the document at hand.
-
-This repo builds on that idea as a practical toolkit. It keeps the core dependency-light, adds extra production-oriented metrics, and includes optional adapters for OCI, LangChain, and LlamaIndex.
+This project is inspired by Ekimetrics' `adaptive-chunking` repository and the paper _Adaptive Chunking: Optimizing Chunking-Method Selection for RAG_. It keeps the core dependency-light, adds production-oriented metrics, and includes optional adapters for OCI, LangChain, LlamaIndex, APIs, PDFs, and vector-store ingestion recipes.
 
 ## Features
 
@@ -65,6 +110,27 @@ This repo builds on that idea as a practical toolkit. It keeps the core dependen
 - CLI for local text/Markdown files.
 - Optional OCI Object Storage loader and OCI Generative AI embedding adapter.
 - Small, dependency-light core for local document chunking workflows.
+- Benchmark harness for comparing chunking strategies on your documents.
+- Vector-store ingestion recipe for Chroma, Qdrant, Pinecone-style payloads, and custom databases.
+- Streamlit playground for inspecting selected chunks and candidate rankings.
+
+## Evidence and benchmarking
+
+This repository now includes a lightweight benchmark harness in `benchmarks/compare_chunkers.py`. It compares adaptive selection against named baseline strategies using the same intrinsic metrics that the selector exposes. For a fair RAG-ingestion comparison, the adaptive row selects among the same strategy list passed through `--strategies`.
+
+Run it on the bundled example:
+
+```bash
+python benchmarks/compare_chunkers.py examples/benchmark_policy.md
+```
+
+Run it on a folder of your own text/Markdown/PDF documents:
+
+```bash
+python benchmarks/compare_chunkers.py path/to/docs --strategies fixed-window recursive markdown section-aware token-window --format markdown
+```
+
+For production adoption, pair these intrinsic metrics with task-level retrieval evaluation such as recall@k, answer correctness, RAGAS, DeepEval, or your internal golden-question set. The benchmark script is intentionally small so teams can adapt it to their own documents instead of trusting a canned dataset that may not match their domain.
 
 ## Contributing
 
@@ -87,6 +153,7 @@ The package installs the core local chunking toolkit. Optional extras are availa
 ```bash
 pip install "adaptive-oci-chunking[oci]"
 pip install "adaptive-oci-chunking[api]"
+pip install "adaptive-oci-chunking[demo]"
 pip install "adaptive-oci-chunking[pdf]"
 pip install "adaptive-oci-chunking[langchain,llama-index]"
 ```
@@ -186,6 +253,15 @@ Runnable examples live in `examples/`:
 - `langchain_integration.py`: LangChain `TextSplitter` usage.
 - `llama_index_integration.py`: LlamaIndex `TextNode` conversion.
 - `oci_object_storage.py`: loading source text from OCI Object Storage.
+- `vector_store_ingestion.py`: vector-store-ready records for Chroma, Qdrant, Pinecone-style SDKs.
+- `benchmark_policy.md`: structured sample document for benchmark comparisons.
+
+Additional adoption assets:
+
+- `benchmarks/compare_chunkers.py`: compare adaptive selection with baseline chunkers.
+- `demos/streamlit_app.py`: local playground for inspecting chunks and candidate rankings.
+- `docs/ADOPTION.md`: positioning and launch checklist.
+- `docs/RELEASE.md`: release checklist.
 
 ## Chunker Options
 
@@ -407,6 +483,9 @@ src/adaptive_chunking/
   cli.py           # command line interface
 tests/
 examples/
+benchmarks/
+demos/
+docs/
 ```
 
 ## Notes

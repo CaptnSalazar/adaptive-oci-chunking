@@ -19,3 +19,5 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: pytest
+      - run: python -m compileall src tests examples benchmarks demos
+      - run: python -m build
