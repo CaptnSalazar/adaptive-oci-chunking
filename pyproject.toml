@@ -29,6 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 api = ["fastapi>=0.111", "uvicorn[standard]>=0.30"]
+demo = ["streamlit>=1.36"]
 pdf = ["pypdf>=4.2"]
 langchain = ["langchain-text-splitters>=0.2"]
 llama-index = ["llama-index-core>=0.10"]
@@ -41,6 +42,9 @@ dev = [
   "llama-index-core>=0.10",
   "oci>=2.130",
   "pypdf>=4.2",
+  "streamlit>=1.36",
+  "build>=1.2",
+  "twine>=5.1",
   "pytest>=8.0",
   "ruff>=0.5",
   "mypy>=1.10",
@@ -51,6 +55,7 @@ adaptive-chunk = "adaptive_chunking.cli:app"
 
 [project.urls]
 Repository = "https://github.com/CaptnSalazar/adaptive-oci-chunking"
+Changelog = "https://github.com/CaptnSalazar/adaptive-oci-chunking/blob/main/CHANGELOG.md"
 LinkedIn = "https://www.linkedin.com/in/yashtechi/"
 
 [tool.hatch.build.targets.wheel]

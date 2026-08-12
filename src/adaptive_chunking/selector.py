@@ -28,6 +28,7 @@ class AdaptiveSelector:
 
     def rank(self, text: str) -> list[CandidateResult]:
         candidates: list[CandidateResult] = []
+        priority = {chunker.name: index for index, chunker in enumerate(self.chunkers)}
         for chunker in self.chunkers:
             chunks = chunker.split(text)
             if self.config.max_chunks is not None:
@@ -40,7 +41,7 @@ class AdaptiveSelector:
             key=lambda candidate: (
                 -candidate.score,
                 len(candidate.chunks),
-                candidate.strategy_name,
+                priority.get(candidate.strategy_name, len(priority)),
             ),
         )
 
